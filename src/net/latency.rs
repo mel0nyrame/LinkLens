@@ -353,4 +353,14 @@ mod tests {
         assert_eq!(parse_host_port(""), None);
         assert_eq!(parse_host_port("不是 URL"), None);
     }
+
+    /// 集成冒烟（需真实网络，默认跳过）：`cargo test --lib -- --ignored`
+    /// 验证 TLS 握手探针能对公网目标给出毫秒级结果。
+    #[tokio::test]
+    #[ignore = "需要真实公网，手动执行"]
+    async fn live_tls_handshake_probe_returns_milliseconds() {
+        let probe = super::LatencyProbe::new();
+        let ms = probe.measure_url("https://1.1.1.1/cdn-cgi/trace").await;
+        assert!(ms.is_some_and(|v| v > 0 && v <= 8_000), "实测延迟异常：{ms:?}");
+    }
 }
