@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] 启动进入 TUI，可经键位在七个功能页间切换并可退出
 - [x] 卡片、徽章、key-value 行、渐变信任分条均经主题助手渲染；代码中不出现裸边框块与裸颜色常量
