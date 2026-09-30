@@ -38,7 +38,11 @@ pub fn trust_gradient_at(t: f64) -> Color {
     } else {
         (GRADIENT_MID, GRADIENT_HIGH, (t - 0.5) / 0.5)
     };
-    Color::Rgb(lerp(from.0, to.0, frac), lerp(from.1, to.1, frac), lerp(from.2, to.2, frac))
+    Color::Rgb(
+        lerp(from.0, to.0, frac),
+        lerp(from.1, to.1, frac),
+        lerp(from.2, to.2, frac),
+    )
 }
 
 fn lerp(from: u8, to: u8, frac: f64) -> u8 {
@@ -60,7 +64,11 @@ pub fn trust_bar_cells(score: u8, width: u16) -> Vec<BarCell> {
     let denom = u32::from(width.saturating_sub(1)).max(1);
     (0..u32::from(width))
         .map(|i| BarCell {
-            color: if i < fill { trust_gradient_at(f64::from(i) / f64::from(denom)) } else { THEME_MUTED },
+            color: if i < fill {
+                trust_gradient_at(f64::from(i) / f64::from(denom))
+            } else {
+                THEME_MUTED
+            },
             filled: i < fill,
         })
         .collect()
@@ -78,7 +86,13 @@ mod tests {
         assert_eq!(THEME_ACCENT, Color::Rgb(0x22, 0xd3, 0xee));
         assert_eq!(THEME_MUTED, Color::Rgb(0x71, 0x71, 0x7a));
         // 语义五色互不相同
-        let palette = [THEME_SUCCESS, THEME_WARNING, THEME_ERROR, THEME_ACCENT, THEME_MUTED];
+        let palette = [
+            THEME_SUCCESS,
+            THEME_WARNING,
+            THEME_ERROR,
+            THEME_ACCENT,
+            THEME_MUTED,
+        ];
         for (i, a) in palette.iter().enumerate() {
             for b in &palette[i + 1..] {
                 assert_ne!(a, b);
@@ -127,7 +141,11 @@ mod tests {
         let cells = trust_bar_cells(50, 10);
         assert_eq!(cells.len(), 10);
         assert!(cells[..5].iter().all(|c| c.filled));
-        assert!(cells[5..].iter().all(|c| !c.filled && c.color == THEME_MUTED));
+        assert!(
+            cells[5..]
+                .iter()
+                .all(|c| !c.filled && c.color == THEME_MUTED)
+        );
     }
 
     #[test]

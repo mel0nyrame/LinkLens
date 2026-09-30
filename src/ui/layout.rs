@@ -124,7 +124,10 @@ mod tests {
     #[test]
     fn fewer_cards_than_columns_keeps_grid_slots() {
         let rects = card_rects(Rect::new(0, 0, 100, 10), 2);
-        assert_eq!(rects, vec![Rect::new(0, 0, 33, 10), Rect::new(34, 0, 33, 10)]);
+        assert_eq!(
+            rects,
+            vec![Rect::new(0, 0, 33, 10), Rect::new(34, 0, 33, 10)]
+        );
     }
 
     #[test]
@@ -154,7 +157,10 @@ mod tests {
         let area = Rect::new(0, 0, 120, 30);
         let rects = card_rects(area, 7);
         for r in &rects {
-            assert!(r.right() <= area.right() && r.bottom() <= area.bottom(), "{r:?} 越界");
+            assert!(
+                r.right() <= area.right() && r.bottom() <= area.bottom(),
+                "{r:?} 越界"
+            );
         }
     }
 }

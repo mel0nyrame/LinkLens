@@ -19,7 +19,10 @@ pub fn card<'a>(title: impl Into<Line<'a>>) -> Block<'a> {
 
 /// 徽章：语义底色短标签，前后各留一个空格作内边距。
 pub fn badge(text: &str, semantic: Color) -> Span<'static> {
-    Span::styled(format!(" {text} "), Style::new().bg(semantic).fg(THEME_BADGE_FG))
+    Span::styled(
+        format!(" {text} "),
+        Style::new().bg(semantic).fg(THEME_BADGE_FG),
+    )
 }
 
 /// key-value 行：键暗灰、值正文色。
@@ -40,7 +43,12 @@ pub fn trust_bar(score: u8, width: u16) -> Line<'static> {
     Line::from(
         trust_bar_cells(score, width)
             .into_iter()
-            .map(|cell| Span::styled(if cell.filled { "█" } else { "░" }, Style::new().fg(cell.color)))
+            .map(|cell| {
+                Span::styled(
+                    if cell.filled { "█" } else { "░" },
+                    Style::new().fg(cell.color),
+                )
+            })
             .collect::<Vec<_>>(),
     )
 }
