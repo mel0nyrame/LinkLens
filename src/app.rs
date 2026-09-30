@@ -1,7 +1,8 @@
-//! 应用状态与键位导航：页面切换、退出。
+//! 应用状态与键位导航：页面切换、隐藏 IP 开关、退出。
 //!
 //! 键位约定：`1`-`7` 直达页面，`←`/`→`（或 `h`/`l`、`Tab`/`Shift+Tab`）顺序循环，
-//! `q`/`Esc`/`Ctrl+C` 退出。带输入框的页面在后续票中先行消费按键，再回落到此层。
+//! `i` 切换隐藏 IP 打码，`q`/`Esc`/`Ctrl+C` 退出。带输入框的页面在后续票中
+//! 先行消费按键，再回落到此层。隐藏 IP 是全局开关：影响所有页面的 IP 显示。
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use futures_util::StreamExt;
@@ -80,10 +81,12 @@ impl Page {
     }
 }
 
-/// 应用状态：当前页面与退出标记。
+/// 应用状态：当前页面、隐藏 IP 开关与退出标记。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct App {
     pub page: Page,
+    /// 隐藏 IP 开关：开启后界面所有 IP 打码显示（方便截图分享）。
+    pub hide_ip: bool,
     pub should_quit: bool,
 }
 
@@ -97,6 +100,7 @@ impl App {
         match code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => self.should_quit = true,
+            KeyCode::Char('i') => self.hide_ip = !self.hide_ip,
             KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => {
                 self.page = self.page.previous();
             }
@@ -240,5 +244,17 @@ mod tests {
         app.handle_key(KeyCode::Char('c'), KeyModifiers::NONE);
         assert!(!app.should_quit);
         assert_eq!(app.page, Page::IpQuery);
+    }
+
+    #[test]
+    fn i_key_toggles_ip_masking_without_changing_page() {
+        let mut app = App::default();
+        assert!(!app.hide_ip, "默认不打码");
+        app.handle_key(KeyCode::Char('i'), KeyModifiers::NONE);
+        assert!(app.hide_ip);
+        assert_eq!(app.page, Page::IpQuery);
+        assert!(!app.should_quit);
+        app.handle_key(KeyCode::Char('i'), KeyModifiers::NONE);
+        assert!(!app.hide_ip);
     }
 }
