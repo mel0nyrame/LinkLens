@@ -6,5 +6,7 @@
 //! 允许依赖：外部 crate 与标准库；不得依赖 `detect`/`ui`（依赖单向 ui → detect → net）。
 
 pub mod cn_source;
+pub mod geoip;
 pub mod http;
+pub mod iprisk;
 pub mod trace;
