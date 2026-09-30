@@ -1,0 +1,34 @@
+//! 共享 HTTP 客户端：全部公网探测共用的 reqwest 配置。
+//!
+//! 质量红线：公网探测超时一律 8 秒（客户端级总超时，覆盖连接到响应头全过程）。
+
+use std::time::Duration;
+
+use reqwest::Client;
+
+/// 公网探测统一超时（秒）。任何探测源不得另设更短超时。
+pub const PUBLIC_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// 构建全项目共用的探测客户端：rustls-TLS、8 秒总超时、常规浏览器 UA。
+///
+/// 代理遵循 `http_proxy`/`https_proxy` 环境变量（reqwest 默认行为），
+/// 这正是本工具要测的「当前出口」。
+pub fn client() -> Client {
+    Client::builder()
+        .timeout(PUBLIC_TIMEOUT)
+        .user_agent("Mozilla/5.0")
+        .build()
+        .expect("探测客户端配置是静态合法的，构建不应失败")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_timeout_is_eight_seconds() {
+        assert_eq!(PUBLIC_TIMEOUT, Duration::from_secs(8));
+        // 客户端能以红线配置构建（rustls-TLS、超时、UA 均为静态合法配置）
+        let _ = client();
+    }
+}
