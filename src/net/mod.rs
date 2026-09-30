@@ -11,4 +11,5 @@ pub mod geoip;
 pub mod http;
 pub mod iprisk;
 pub mod latency;
+pub mod split;
 pub mod trace;
