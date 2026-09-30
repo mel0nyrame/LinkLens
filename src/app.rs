@@ -4,6 +4,11 @@
 //! `q`/`Esc`/`Ctrl+C` 退出。带输入框的页面在后续票中先行消费按键，再回落到此层。
 
 use crossterm::event::{KeyCode, KeyModifiers};
+use futures_util::StreamExt;
+use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
+
+use crate::theme::icon::Icon;
+use crate::ui;
 
 /// 七个功能页，顺序即导航顺序，也是数字键 `1`-`7` 的直达目标。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -39,6 +44,19 @@ impl Page {
             Page::DnsLeak => "DNS 泄漏",
             Page::WebRtc => "WebRTC",
             Page::Connectivity => "网络连通",
+        }
+    }
+
+    /// 页面在导航与卡片标题中使用的图标。
+    pub fn icon(self) -> Icon {
+        match self {
+            Page::IpQuery => Icon::IpQuery,
+            Page::Claude => Icon::Claude,
+            Page::Gpt => Icon::Gpt,
+            Page::IpScore => Icon::IpScore,
+            Page::DnsLeak => Icon::DnsLeak,
+            Page::WebRtc => Icon::WebRtc,
+            Page::Connectivity => Icon::Connectivity,
         }
     }
 
@@ -93,6 +111,41 @@ impl App {
     }
 }
 
+/// 运行终端应用：初始化终端、事件循环、恢复终端。
+///
+/// 无论循环以何种方式结束（正常退出、绘制或读取事件失败）都会恢复终端状态；
+/// panic 时的恢复由 `ratatui::try_init` 安装的钩子负责。
+pub async fn run() -> std::io::Result<()> {
+    let mut terminal = ratatui::try_init()?;
+    let mut events = EventStream::new();
+    let mut app = App::default();
+    let mut io_error = None;
+
+    while !app.should_quit {
+        if let Err(err) = terminal.draw(|f| ui::shell::render(f, &app)) {
+            io_error = Some(err);
+            break;
+        }
+        match events.next().await {
+            Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
+                app.handle_key(key.code, key.modifiers);
+            }
+            Some(Ok(_)) => {}
+            Some(Err(err)) => {
+                io_error = Some(err);
+                break;
+            }
+            None => break,
+        }
+    }
+
+    let _ = ratatui::try_restore();
+    match io_error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{App, Page};
@@ -104,7 +157,15 @@ mod tests {
         let titles: Vec<_> = Page::ALL.iter().map(|p| p.title()).collect();
         assert_eq!(
             titles,
-            ["IP 查询", "Claude 检测", "GPT 检测", "IP 评分", "DNS 泄漏", "WebRTC", "网络连通"]
+            [
+                "IP 查询",
+                "Claude 检测",
+                "GPT 检测",
+                "IP 评分",
+                "DNS 泄漏",
+                "WebRTC",
+                "网络连通"
+            ]
         );
     }
 
@@ -135,8 +196,10 @@ mod tests {
 
     #[test]
     fn last_page_right_cycles_back_to_first() {
-        let mut app = App::default();
-        app.page = Page::Connectivity;
+        let mut app = App {
+            page: Page::Connectivity,
+            ..App::default()
+        };
         app.handle_key(KeyCode::Right, KeyModifiers::NONE);
         assert_eq!(app.page, Page::IpQuery);
     }
