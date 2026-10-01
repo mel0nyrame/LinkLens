@@ -1,4 +1,4 @@
-# Native Windows installer. Runs in the caller's PowerShell session.
+﻿# Native Windows installer. Runs in the caller's PowerShell session.
 $ErrorActionPreference = 'Stop'
 $repo = 'mel0nyrame/LinkLens'
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
