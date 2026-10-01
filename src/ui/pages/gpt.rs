@@ -8,11 +8,5 @@ use crate::state::AppState;
 use super::ai;
 
 pub fn canvas(width: u16, state: &AppState) -> Buffer {
-    ai::canvas(
-        width,
-        &GPT_PROFILE,
-        &state.ai.gpt,
-        &state.home,
-        state.app.hide_ip,
-    )
+    ai::canvas(width, &GPT_PROFILE, &state.ai.gpt, state.app.hide_ip)
 }

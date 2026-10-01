@@ -307,20 +307,7 @@ pub struct SplitExit {
 
 /// 判断文本是否为合法 IP（IPv4 各段 0-255，或 IPv6 形式）。
 pub fn is_valid_ip(text: &str) -> bool {
-    if text.contains(':') {
-        return !text.is_empty()
-            && text
-                .chars()
-                .all(|c| c.is_ascii_hexdigit() || c == ':' || c == '.');
-    }
-    let octets: Vec<&str> = text.split('.').collect();
-    octets.len() == 4
-        && octets.iter().all(|o| {
-            !o.is_empty()
-                && o.len() <= 3
-                && o.chars().all(|c| c.is_ascii_digit())
-                && o.parse::<u16>().is_ok_and(|v| v <= 255)
-        })
+    text.parse::<std::net::IpAddr>().is_ok()
 }
 
 /// 判断是否「适合展示的公网 IPv4」：合法且不在私网/环回/链路本地/CGNAT 段。
@@ -532,6 +519,10 @@ mod tests {
     fn valid_and_invalid_ips() {
         assert!(is_valid_ip("192.0.2.216"));
         assert!(is_valid_ip("2606:4700:4700::1111"));
+        assert!(is_valid_ip("::ffff:192.0.2.1"));
+        for invalid in [":", "1:2:3", "12345::", "1::2::3"] {
+            assert!(!is_valid_ip(invalid), "非法 IPv6: {invalid}");
+        }
         assert!(!is_valid_ip("10.0.0.999"));
         assert!(!is_valid_ip(""));
         assert!(!is_valid_ip("not-an-ip"));

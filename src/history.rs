@@ -19,7 +19,7 @@ pub const MAX_ENTRIES: usize = 6;
 pub struct HistoryEntry {
     /// 出口 IP。
     pub ip: String,
-    /// 风险库原始信任分（风险库缺失时为 0，配合 `restricted` 解读）。
+    /// 风险库原始信任分；缺少有效分值的检测不新增记录。
     pub trust_score: u8,
     /// 是否命中受限地区。
     pub restricted: bool,
@@ -28,14 +28,17 @@ pub struct HistoryEntry {
 }
 
 /// 记录一条检测历史，返回新列表（最新在前）：
-/// 同 IP 距最近一次记录不足 24 小时不重复记录；重录时移除旧同 IP 条目；截断到上限。
+/// 缺少有效分值时保留原列表；同 IP 不足 24 小时不重复记录；重录时移除旧条目并截断。
 pub fn record(
     existing: &[HistoryEntry],
     ip: &str,
-    trust_score: u8,
+    trust_score: Option<u8>,
     restricted: bool,
     now_ms: u64,
 ) -> Vec<HistoryEntry> {
+    let Some(trust_score) = trust_score else {
+        return existing.to_vec();
+    };
     if existing
         .iter()
         .find(|e| e.ip == ip)
@@ -165,21 +168,47 @@ mod tests {
 
     #[test]
     fn first_record_becomes_newest() {
-        let entries = record(&[], "1.2.3.4", 85, false, 1_000);
+        let entries = record(&[], "1.2.3.4", Some(85), false, 1_000);
         assert_eq!(entries, vec![entry("1.2.3.4", 1_000)]);
     }
 
     #[test]
+    fn missing_score_does_not_record_or_block_a_later_valid_score() {
+        let unknown = record(&[], "1.2.3.4", None, false, 1_000);
+        assert!(unknown.is_empty());
+        let valid = record(&unknown, "1.2.3.4", Some(95), false, 2_000);
+        assert_eq!(valid[0].trust_score, 95);
+        assert_eq!(valid[0].recorded_at_ms, 2_000);
+        assert_eq!(record(&valid, "5.6.7.8", None, true, 3_000), valid);
+        assert_eq!(
+            record(&[], "5.6.7.8", Some(0), true, 3_000)[0].trust_score,
+            0
+        );
+    }
+
+    #[test]
     fn same_ip_within_24h_is_deduplicated() {
-        let existing = record(&[], "1.2.3.4", 85, false, 1_000);
-        let again = record(&existing, "1.2.3.4", 40, true, 1_000 + DEDUP_WINDOW_MS - 1);
+        let existing = record(&[], "1.2.3.4", Some(85), false, 1_000);
+        let again = record(
+            &existing,
+            "1.2.3.4",
+            Some(40),
+            true,
+            1_000 + DEDUP_WINDOW_MS - 1,
+        );
         assert_eq!(again, existing, "窗口内重复检测不改写历史");
     }
 
     #[test]
     fn same_ip_beyond_24h_rerecords_and_drops_old() {
-        let existing = record(&[], "1.2.3.4", 85, false, 1_000);
-        let again = record(&existing, "1.2.3.4", 40, true, 1_000 + DEDUP_WINDOW_MS);
+        let existing = record(&[], "1.2.3.4", Some(85), false, 1_000);
+        let again = record(
+            &existing,
+            "1.2.3.4",
+            Some(40),
+            true,
+            1_000 + DEDUP_WINDOW_MS,
+        );
         assert_eq!(
             again,
             vec![HistoryEntry {
@@ -193,8 +222,8 @@ mod tests {
 
     #[test]
     fn different_ips_always_record() {
-        let existing = record(&[], "1.2.3.4", 85, false, 1_000);
-        let entries = record(&existing, "5.6.7.8", 60, false, 1_100);
+        let existing = record(&[], "1.2.3.4", Some(85), false, 1_000);
+        let entries = record(&existing, "5.6.7.8", Some(60), false, 1_100);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].ip, "5.6.7.8");
         assert_eq!(entries[1].ip, "1.2.3.4");
@@ -204,7 +233,7 @@ mod tests {
     fn history_is_capped_at_max_entries() {
         let mut entries: Vec<HistoryEntry> = Vec::new();
         for i in 0..(MAX_ENTRIES + 2) as u64 {
-            entries = record(&entries, &format!("10.0.0.{i}"), 50, false, i * 1_000);
+            entries = record(&entries, &format!("10.0.0.{i}"), Some(50), false, i * 1_000);
         }
         assert_eq!(entries.len(), MAX_ENTRIES);
         assert_eq!(entries[0].ip, format!("10.0.0.{}", MAX_ENTRIES + 1));

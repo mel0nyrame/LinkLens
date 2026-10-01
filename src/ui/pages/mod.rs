@@ -59,3 +59,14 @@ pub(crate) fn latency_display(target: &LatencyState) -> (String, Color) {
         None => ("测量中…".to_string(), THEME_MUTED),
     }
 }
+
+/// 信任分档位取色；领域判定只产出档位，不依赖 UI。
+pub(crate) fn trust_tier_color(tier: crate::detect::ai::TrustTier) -> Color {
+    use crate::detect::ai::TrustTier;
+    match tier {
+        TrustTier::ExtremelyPure | TrustTier::Pure => THEME_SUCCESS,
+        TrustTier::Good => THEME_SUCCESS_SOFT,
+        TrustTier::Neutral => THEME_WARNING,
+        TrustTier::Suspicious => THEME_ERROR,
+    }
+}

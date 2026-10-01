@@ -100,14 +100,12 @@ impl ScoreState {
             }
             return true;
         }
+        if let Some(scroll) = crate::ui::scroll::key_scroll(self.scroll, code, max_scroll) {
+            self.scroll = scroll;
+            return true;
+        }
         self.scroll = self.scroll.min(max_scroll);
         match code {
-            KeyCode::Up => self.scroll = self.scroll.saturating_sub(1),
-            KeyCode::Down => self.scroll = self.scroll.saturating_add(1).min(max_scroll),
-            KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(10),
-            KeyCode::PageDown => self.scroll = self.scroll.saturating_add(10).min(max_scroll),
-            KeyCode::Home => self.scroll = 0,
-            KeyCode::End => self.scroll = max_scroll,
             KeyCode::Char('r') => {
                 if let Some(target) = self.target.clone() {
                     self.queue(target);

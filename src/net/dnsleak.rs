@@ -117,6 +117,7 @@ pub async fn fetch_dns_result(client: &reqwest::Client, token: &str) -> Option<V
             "{}/api/dns/result/{token}",
             crate::net::geoip::API_BASE
         ))
+        .timeout(Duration::from_secs(5))
         .send()
         .await
         .ok()?

@@ -1,6 +1,6 @@
 //! Claude/GPT 检测页共用框架：两页同构，由 `probe_ai::AiProfile` 参数化渲染。
 //!
-//! 布局：三出口 IP 卡行（国内出口复用首页结果、Cloudflare 出口、AI 出口）→
+//! 布局：本轮国内、Cloudflare 与 AI 三出口 IP 卡行 →
 //! 信任分 / 出口属性 / 安全检测卡行 → 可用性 / 服务状态 / 检测历史卡行。
 //! 命中受限地区时信任分强制 0 + 红色「不可访问」且不显示时延。
 
@@ -9,11 +9,12 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::detect::ai::{self, AvailTier, StatusLevel, TrustTier};
+use super::trust_tier_color;
+use crate::detect::ai::{self, AvailTier, StatusLevel};
 use crate::history;
 use crate::net::geoip;
 use crate::probe_ai::AiProfile;
-use crate::state::{EgressCard, EgressPhase, HomeState};
+use crate::state::EgressCard;
 use crate::state_ai::{AiOutcome, AiPageState, AiPhase};
 use crate::theme::color::{
     THEME_ACCENT, THEME_ERROR, THEME_MUTED, THEME_SUCCESS, THEME_SUCCESS_SOFT, THEME_TEXT,
@@ -32,24 +33,27 @@ pub fn canvas(
     width: u16,
     profile: &'static AiProfile,
     page_state: &AiPageState,
-    home: &HomeState,
     hide_ip: bool,
 ) -> Buffer {
-    let (cn, cf) = split_home_cards(home);
+    let cards = match &page_state.phase {
+        AiPhase::Done(outcome) => outcome.reference_egress.as_slice(),
+        AiPhase::Pending => &[],
+    };
+    let (cn, cf) = split_egress_cards(cards);
     card_canvas(
         width,
         vec![
-            render_home_slot(
+            render_reference_slot(
                 "国内出口",
                 cn,
                 hide_ip,
-                matches!(home.egress, EgressPhase::Pending),
+                matches!(page_state.phase, AiPhase::Pending),
             ),
-            render_home_slot(
+            render_reference_slot(
                 "Cloudflare 出口",
                 cf,
                 hide_ip,
-                matches!(home.egress, EgressPhase::Pending),
+                matches!(page_state.phase, AiPhase::Pending),
             ),
             render_ai_exit_card(profile, page_state, hide_ip),
             render_trust_card(profile, page_state, hide_ip),
@@ -64,20 +68,15 @@ pub fn canvas(
 
 // ---------- 第一行：三出口 IP 卡 ----------
 
-/// 从首页结果拆出（国内出口卡, Cloudflare 出口卡）。
-fn split_home_cards(home: &HomeState) -> (Option<&EgressCard>, Option<&EgressCard>) {
-    match &home.egress {
-        EgressPhase::Ready(cards) => {
-            let cf = cards.iter().find(|c| c.label == "Cloudflare 出口");
-            let cn = cards.iter().find(|c| c.label != "Cloudflare 出口");
-            (cn, cf)
-        }
-        EgressPhase::Pending => (None, None),
-    }
+/// 从本轮出口快照拆出国内与 Cloudflare 卡片。
+fn split_egress_cards(cards: &[EgressCard]) -> (Option<&EgressCard>, Option<&EgressCard>) {
+    let cf = cards.iter().find(|c| c.label == "Cloudflare 出口");
+    let cn = cards.iter().find(|c| c.label != "Cloudflare 出口");
+    (cn, cf)
 }
 
-/// 首页复用卡槽：区分探测中与已结束但缺少出口。
-fn render_home_slot(
+/// 本轮参照出口卡槽：区分探测中与已结束但缺少出口。
+fn render_reference_slot(
     label: &str,
     data: Option<&EgressCard>,
     hide_ip: bool,
@@ -87,7 +86,7 @@ fn render_home_slot(
         let block = card(label.to_string());
         return Paragraph::new(Line::styled(
             if pending {
-                "等待首页探测…"
+                "本轮探测中…"
             } else {
                 "未获取到出口 IP（探测失败或超时）"
             },
@@ -486,16 +485,6 @@ fn render_history_card(page_state: &AiPageState, hide_ip: bool) -> Paragraph<'st
 
 // ---------- 档位取色与小组件 ----------
 
-/// 信任分档位取色：绿 / 浅绿 / 黄 / 红。
-fn trust_tier_color(tier: TrustTier) -> ratatui::style::Color {
-    match tier {
-        TrustTier::ExtremelyPure | TrustTier::Pure => THEME_SUCCESS,
-        TrustTier::Good => THEME_SUCCESS_SOFT,
-        TrustTier::Neutral => THEME_WARNING,
-        TrustTier::Suspicious => THEME_ERROR,
-    }
-}
-
 /// 可用性档位取色：绿 / 浅绿 / 黄 / 红。
 fn avail_tier_color(tier: AvailTier) -> ratatui::style::Color {
     match tier {
@@ -531,8 +520,8 @@ fn non_empty(text: &str, fallback: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::split_home_cards;
-    use crate::state::{EgressCard, EgressPhase, HomeState};
+    use super::split_egress_cards;
+    use crate::state::EgressCard;
 
     fn card(label: &str) -> EgressCard {
         EgressCard {
@@ -543,24 +532,16 @@ mod tests {
     }
 
     #[test]
-    fn home_cards_split_cn_and_cloudflare() {
-        let home = HomeState {
-            egress: EgressPhase::Ready(vec![
-                card("主出口"),
-                card("备用出口"),
-                card("Cloudflare 出口"),
-            ]),
-            ..HomeState::default()
-        };
-        let (cn, cf) = split_home_cards(&home);
+    fn current_snapshot_splits_cn_and_cloudflare() {
+        let cards = vec![card("主出口"), card("备用出口"), card("Cloudflare 出口")];
+        let (cn, cf) = split_egress_cards(&cards);
         assert_eq!(cn.map(|c| c.label.as_str()), Some("主出口"));
         assert_eq!(cf.map(|c| c.label.as_str()), Some("Cloudflare 出口"));
     }
 
     #[test]
-    fn pending_home_has_no_slots() {
-        let home = HomeState::default();
-        let (cn, cf) = split_home_cards(&home);
+    fn empty_snapshot_has_no_slots() {
+        let (cn, cf) = split_egress_cards(&[]);
         assert!(cn.is_none() && cf.is_none());
     }
 }
