@@ -64,6 +64,7 @@ class ReleaseTools(unittest.TestCase):
                     with tarfile.open(archive) as contents:
                         names = set(contents.getnames())
                 self.assertEqual(names, expected)
+                self.assertNotIn(b"\r", archive.with_name(archive.name + ".sha256").read_bytes())
                 sums = archive.with_name(archive.name + ".sha256").read_text()
                 self.assertEqual(sums.split()[0], hashlib.sha256(archive.read_bytes()).hexdigest())
 

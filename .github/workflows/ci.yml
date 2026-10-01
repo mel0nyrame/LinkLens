@@ -77,3 +77,5 @@ jobs:
       - name: Windows PowerShell 5.1 installer
         shell: powershell
         run: .github/scripts/test_install.ps1
+      - name: Portable release checksums
+        run: python .github/scripts/test_release_tools.py ReleaseTools.test_archive_contents_and_checksum

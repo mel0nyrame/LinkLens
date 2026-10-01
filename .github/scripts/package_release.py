@@ -27,7 +27,7 @@ def package(root, tag, target):
             for source, name in inputs:
                 output.add(source, arcname=name)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    archive.with_name(archive.name + ".sha256").write_text(f"{digest}  {archive.name}\n")
+    archive.with_name(archive.name + ".sha256").write_text(f"{digest}  {archive.name}\n", encoding="utf-8", newline="\n")
     return archive
 
 
