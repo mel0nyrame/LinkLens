@@ -11,6 +11,7 @@ use crate::app::App;
 use crate::net::latency::{LatencyTier, RoundResult, tier};
 use crate::net::split::SplitExit;
 use crate::state_ai::AiState;
+use crate::state_leak::{DnsLeakState, WebrtcState};
 
 /// 首页一张出口 IP 卡的内容。
 #[derive(Clone, Debug, Default)]
@@ -116,7 +117,7 @@ pub struct LinkState {
     pub targets: Vec<LatencyState>,
 }
 
-/// 整个应用的状态：键位状态 + 首页 + 连通页 + AI 检测页。
+/// 整个应用的状态：键位状态 + 首页 + 连通页 + AI 检测页 + 泄漏检测两页。
 #[derive(Default)]
 pub struct AppState {
     pub app: App,
@@ -124,6 +125,10 @@ pub struct AppState {
     pub link: LinkState,
     /// Claude/GPT 检测页状态（详见 `state_ai`）。
     pub ai: AiState,
+    /// DNS 泄漏页（形状见 `state_leak`）。
+    pub dns_leak: DnsLeakState,
+    /// WebRTC 泄漏页（形状见 `state_leak`）。
+    pub webrtc: WebrtcState,
 }
 
 /// 线程安全的共享句柄：互斥锁 + 变更通知。

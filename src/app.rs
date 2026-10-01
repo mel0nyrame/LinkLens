@@ -11,7 +11,7 @@ use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
 
 use crate::theme::icon::Icon;
 use crate::ui;
-use crate::{probe, probe_ai, state};
+use crate::{probe, probe_ai, probe_leak, state};
 
 /// 七个功能页，顺序即导航顺序，也是数字键 `1`-`7` 的直达目标。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -133,12 +133,18 @@ pub async fn run() -> std::io::Result<()> {
     let shared = state::SharedState::new();
     probe::spawn_home(shared.clone());
     let mut link_spawned = false;
+    let mut webrtc_spawned = false;
 
     let result = loop {
         // 首次进入连通页时启动 47 目标测量（仅一次）
         if !link_spawned && shared.lock().app.page == Page::Connectivity {
             probe::spawn_link(shared.clone());
             link_spawned = true;
+        }
+        // 首次进入 WebRTC 页时启动 STUN 探测（仅一次）
+        if !webrtc_spawned && shared.lock().app.page == Page::WebRtc {
+            webrtc_spawned = true;
+            probe_leak::spawn_webrtc_probe(shared.clone());
         }
 
         // 首次进入 Claude/GPT 页时启动对应检测（幂等）
@@ -170,6 +176,9 @@ pub async fn run() -> std::io::Result<()> {
             event = events.next() => {
                 match event {
                     Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
+                        // 页面级按键先行消费（f/d/r，与全局键位无冲突）
+                        let page = shared.lock().app.page;
+                        probe_leak::handle_page_key(shared.clone(), page, key.code);
                         shared.lock().app.handle_key(key.code, key.modifiers);
                     }
                     Some(Ok(_)) => {}
