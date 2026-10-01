@@ -132,6 +132,7 @@ else:
 
     def test_install_latest_redirect(self):
         self.run_installer("Darwin", "arm64", latest=True)
+        self.assertNotIn("$install_dir，", (ROOT / "install.sh").read_text())
 
     def test_install_fails_before_changing_destination(self):
         self.run_installer("Linux", "x86_64", corrupt=True)

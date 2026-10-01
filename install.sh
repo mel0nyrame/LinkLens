@@ -67,7 +67,7 @@ main() {
         cp "$temp_dir/$name$suffix" "$install_dir/.$name$suffix.new"
         mv -f "$install_dir/.$name$suffix.new" "$install_dir/$name$suffix"
     done
-    echo "已安装到 $install_dir，使用 linklens 或 llens 启动。"
+    echo "已安装到 ${install_dir}，使用 linklens 或 llens 启动。"
     case ":${PATH:-}:" in
         *":$install_dir:"*) ;;
         *) printf '请将安装目录加入 PATH（当前终端执行）：\nexport PATH="%s:$PATH"\n' "$install_dir" ;;
