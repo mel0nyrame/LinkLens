@@ -1,8 +1,7 @@
-//! 检测历史持久化：同 IP 24 小时内去重、最新在前、上限 6 条（上游接口报告 localStorage 语义）。
+//! 检测历史持久化：同 IP 24 小时内去重、最新在前、上限 6 条。
 //!
-//! 数据落仓库根 `.data/` 目录（ADR-0002：目录内含内容为 `*` 的 `.gitignore`
-//! 自忽略，数据跟着仓库走、路径与项目名解耦）。去重判定与序列化是纯函数
-//!（测试接缝），磁盘读写是薄 IO 壳。
+//! 数据存储在用户目录 `~/.config/linklens/datas/`（ADR-0003）。
+//! 去重判定与序列化是纯函数，磁盘读写是薄 IO 壳。
 
 use std::path::{Path, PathBuf};
 
@@ -11,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// 同 IP 去重窗口：24 小时。
 pub const DEDUP_WINDOW_MS: u64 = 24 * 60 * 60 * 1000;
 
-/// 历史条目上限（上游接口报告 localStorage 保留最近 6 条）。
+/// 历史条目上限：保留最近 6 条。
 pub const MAX_ENTRIES: usize = 6;
 
 /// 一条 AI 出口检测历史。
@@ -106,32 +105,26 @@ pub fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
-/// 数据目录：从当前工作目录向上找 `.git`（仓库根），数据落在 `<仓库根>/.data/`；
-/// 找不到时退回 `<cwd>/.data/`。
-pub fn data_dir() -> PathBuf {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let mut dir: Option<PathBuf> = None;
-    for ancestor in cwd.ancestors() {
-        if ancestor.join(".git").exists() {
-            dir = Some(ancestor.to_path_buf());
-            break;
-        }
-    }
-    dir.unwrap_or(cwd).join(".data")
+/// 固定用户级目录，所有启动位置与命令共享历史。
+pub fn data_dir() -> std::io::Result<PathBuf> {
+    data_dir_for_home(std::env::home_dir().as_deref())
+}
+
+fn data_dir_for_home(home: Option<&Path>) -> std::io::Result<PathBuf> {
+    let home = home
+        .filter(|p| p.is_absolute())
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "无法确定用户主目录"))?;
+    Ok(home.join(".config/linklens/datas"))
 }
 
 /// 按平台标签给出历史文件路径：`<数据目录>/{tag}-history.json`。
-pub fn history_path(tag: &str) -> PathBuf {
-    data_dir().join(format!("{tag}-history.json"))
+pub fn history_path(tag: &str) -> std::io::Result<PathBuf> {
+    Ok(data_dir()?.join(format!("{tag}-history.json")))
 }
 
-/// 确保数据目录存在且自忽略（缺 `.gitignore` 时补写内容为 `*` 的自忽略文件）。
+/// 确保数据目录存在。
 pub fn ensure_data_dir(dir: &Path) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
-    let gitignore = dir.join(".gitignore");
-    if !gitignore.exists() {
-        std::fs::write(&gitignore, "*\n")?;
-    }
     Ok(dir.to_path_buf())
 }
 
@@ -142,7 +135,7 @@ pub fn load(path: &Path) -> Vec<HistoryEntry> {
         .unwrap_or_default()
 }
 
-/// 写入历史（自动建目录与自忽略文件）。
+/// 写入历史，自动创建父目录。
 pub fn save(path: &Path, entries: &[HistoryEntry]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         ensure_data_dir(dir)?;
@@ -156,6 +149,22 @@ mod tests {
         DEDUP_WINDOW_MS, HistoryEntry, MAX_ENTRIES, entries_from_json, entries_to_json,
         format_recorded_at, record,
     };
+
+    #[test]
+    fn history_directory_is_under_the_user_home() {
+        use std::path::Path;
+        let home = if cfg!(windows) {
+            "C:\\Users\\fixture"
+        } else {
+            "/users/fixture"
+        };
+        assert_eq!(
+            super::data_dir_for_home(Some(Path::new(home))).unwrap(),
+            Path::new(home).join(".config/linklens/datas")
+        );
+        assert!(super::data_dir_for_home(None).is_err());
+        assert!(super::data_dir_for_home(Some(Path::new("relative-home"))).is_err());
+    }
 
     fn entry(ip: &str, at_ms: u64) -> HistoryEntry {
         HistoryEntry {

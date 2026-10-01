@@ -3,7 +3,7 @@
 //! 每轮三出口并行（国内出口复用首页的双源采集流程、
 //! Cloudflare 出口 trace 1.1.1.1、AI 出口 trace 平台域名）→ 出口 IP 拉
 //! iprisk + geoip（IPv6 无 geo 时用 trace `loc=` 兜底）→ 可用性探测分档 →
-//! 服务状态 → 历史记录（同 IP 24h 去重，落 `.data/`）。
+//! 服务状态 → 历史记录（同 IP 24h 去重，落用户历史目录）。
 //!
 //! 公网探测采用客户端级 8 秒边界；AI 风险聚合请求单独设为 10 秒。
 
@@ -28,7 +28,7 @@ pub struct AiProfile {
     pub availability_targets: &'static [(&'static str, &'static str)],
     /// 命中受限地区时的红色警示副文案。
     pub restricted_hint: &'static str,
-    /// 历史文件标签（`.data/{tag}-history.json`）。
+    /// 历史文件标签（`<用户历史目录>/{tag}-history.json`）。
     pub history_tag: &'static str,
 }
 
@@ -133,7 +133,7 @@ async fn run_page(
     let loaded_history = {
         let mut state = shared.lock();
         let path = history::history_path(profile.history_tag);
-        let loaded = history::load(&path);
+        let loaded = path.as_ref().map(|p| history::load(p)).unwrap_or_default();
         let page_state = state
             .ai
             .page_mut(profile.page)
@@ -178,7 +178,9 @@ async fn run_page(
         let now = history::now_ms();
         let path = history::history_path(profile.history_tag);
         let entries = history::record(&loaded_history, ip, trust, restricted, now);
-        if trust.is_some() {
+        if trust.is_some()
+            && let Ok(path) = path
+        {
             let _ = history::save(&path, &entries);
         }
         let mut state = shared.lock();
@@ -275,23 +277,21 @@ mod tests {
     }
 
     #[test]
-    fn history_paths_never_contain_project_name() {
-        // 项目名是占位：文件名与数据目录相对路径不得焊死「linklens」
-        //（绝对路径前缀反映用户克隆位置，与本约束无关）
+    fn history_paths_share_the_user_data_directory() {
         for tag in [CLAUDE_PROFILE.history_tag, GPT_PROFILE.history_tag] {
-            let path = history::history_path(tag);
+            let path = history::history_path(tag).unwrap();
             let file = path
                 .file_name()
                 .expect("历史路径应有文件名")
                 .to_string_lossy();
-            assert!(!file.contains("linklens"), "历史文件名 {file} 焊死了项目名");
             assert_eq!(file, format!("{tag}-history.json"));
             let parent = path
                 .parent()
                 .and_then(|dir| dir.file_name())
                 .expect("历史路径应有数据目录")
                 .to_string_lossy();
-            assert_eq!(parent, ".data");
+            assert_eq!(parent, "datas");
+            assert_eq!(path.parent().unwrap(), history::data_dir().unwrap());
         }
     }
 

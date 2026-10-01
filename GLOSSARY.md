@@ -1,6 +1,6 @@
 # LinkLens
 
-LinkLens 终端网络诊断工具：提供 IP 检测能力（IP 查询、Claude/GPT 出口检测、IP 评分、DNS/WebRTC 泄漏、网络连通）带进终端 TUI。接口事实以 `docs/research/net-coffee-api.md` 为准。
+Rust 终端网络诊断工具，提供 IP 查询、Claude/GPT 出口检测、IP 评分、DNS/WebRTC 泄漏检测和网络连通测试。后端使用 net.coffee 接口；协议与响应事实见 [net.coffee 接口报告](docs/research/net-coffee-api.md)。
 
 ## Language
 
@@ -21,7 +21,7 @@ Claude/OpenAI 明确不提供服务的 10 个国家/地区码（CN、HK、MO、R
 注册国与归属国一致的 IP；不一致的为**广播 IP**。
 
 **场景评分**:
-基于信任分按三个使用场景（TikTok / 社媒 / AI）各自计算的 0-10 分，含地区硬门槛（block 归零、partial 封顶 5 分）。算法按接口报告定义实现。
+基于信任分按三个使用场景（TikTok / 社媒 / AI）各自计算的 0-10 分，含地区硬门槛（block 归零、partial 封顶 5 分）。算法依据接口报告中的评分公式。
 _Avoid_: 三环评分
 
 **DNS 泄漏**:

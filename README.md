@@ -1,6 +1,6 @@
 # LinkLens
 
-在终端查询出口 IP，检测 Claude/GPT 出口、DNS/WebRTC 泄漏，查看 IP 评分和网络连通结果。检测规则与接口依据见 [net.coffee 接口报告](docs/research/net-coffee-api.md)。
+在终端查询出口 IP，检测 Claude/GPT 出口、DNS/WebRTC 泄漏，查看 IP 评分和网络连通结果。后端使用 net.coffee 接口，协议与响应事实见 [net.coffee 接口报告](docs/research/net-coffee-api.md)。
 
 在仓库目录使用 Rust 工具链运行：
 
@@ -8,7 +8,7 @@
 cargo run --release
 ```
 
-构建独立二进制可使用 `cargo build --release`，产物位于 `target/release/`，名称由 `Cargo.toml` 中的包名决定。使用支持 Nerd Font 与中文、emoji 的终端字体。窗口至少 90 列时，卡片按内容高度分组，每行最多三张；信息较多的卡片可独占一行。较窄时按原顺序单列排列。卡片按实际换行高度展开，超出窗口的内容可滚动查看。
+构建使用 `cargo build --release`，产物为 `target/release/linklens` 和 `target/release/llens`。通过 `cargo install --path . --locked` 安装后，可直接输入 `linklens` 或 `llens`；两者启动同一个应用。使用支持 Nerd Font 与中文、emoji 的终端字体。窗口至少 90 列时，卡片按内容高度分组，每行最多三张；信息较多的卡片可独占一行。较窄时按原顺序单列排列。卡片按实际换行高度展开，超出窗口的内容可滚动查看。
 
 | 操作 | 键位 |
 | --- | --- |
@@ -28,8 +28,8 @@ cargo run --release
 
 HTTP 请求遵循 `http_proxy`/`https_proxy`/`all_proxy` 及其大写形式，`no_proxy`/`NO_PROXY` 可指定例外；程序不会把这些 HTTP 代理设置应用到原生探测。连通与可用性时延使用系统网络的 TCP/TLS 握手测量，DNS 使用系统解析器，STUN 使用原生 UDP；它们与 HTTP 代理可能走不同链路。系统代理模式下 UDP 不通或没有 STUN 候选，不能据此认定没有泄漏；使用 TUN 模式时再对照公网 UDP 与 HTTP 出口。所有结果都描述本次实际探测到的链路。延迟值只计算 TCP 连接和 TLS 握手，不含 DNS 耗时，也不等待响应体；单次总耗时上限 8 秒涵盖 DNS 和全部地址尝试。首页每目标预热 1 次后测 12 轮，网络连通页预热后测 8 轮，取成功样本上中位数。
 
-Claude/GPT 只在取得出口 IP 和有效信任分后记录历史，缺失分值不写成 0；历史保存在仓库根 `.data/`，同 IP 24 小时内去重，每平台保留最新 6 条，重启可查看。运行时自动创建内容为 `*` 的 `.data/.gitignore`，数据不进入 Git；删除相应历史 JSON 可清空该平台记录。在仓库外启动二进制时，请留意当前工作目录：程序从当前目录向上查找仓库根，找不到时使用当前目录下的 `.data/`。
+Claude/GPT 只在取得出口 IP 和有效信任分后记录历史，缺失分值不写成 0；历史保存在 `~/.config/linklens/datas/`，同 IP 24 小时内去重，每平台保留最新 6 条。两个命令和所有启动位置共用历史。目录自动创建；删除对应的 `claude-history.json` 或 `gpt-history.json` 可清空该平台记录。主目录不可用时只保留本次内存历史。
 
-与网页版的差异：工具不发送 `/api/session` 统计上报，不加载统计脚本，也没有浏览器指纹或设备信息检测；DNS/STUN 使用原生系统网络。公网探测采用 8 秒上限（上游接口报告浏览器部分探测采用较短时限），DNS 结果回读请求单独设为 5 秒；聚合查询使用各接口自己的时限：AI 风险请求 10 秒，评分主查询 45 秒，BGP 22 秒，Radar 14 秒，其余 v2 增强请求 15 秒。网络失败、缺少参照数据与不支持的区块会显示相应状态。
+数据与探测边界：LinkLens 不发送 `/api/session` 统计上报，不加载统计脚本，也没有浏览器指纹或设备信息检测；DNS/STUN 使用原生系统网络。公网探测采用 8 秒上限，DNS 结果回读请求单独设为 5 秒；聚合查询使用各接口自己的时限：AI 风险请求 10 秒，评分主查询 45 秒，BGP 22 秒，Radar 14 秒，其余 v2 增强请求 15 秒。网络失败、缺少参照数据与不支持的区块会显示相应状态。
 
 开发验证：`cargo test`、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`。需要真实网络或 UDP socket 的冒烟测试默认跳过，可用 `cargo test --lib -- --ignored` 显式运行。终端布局与操作需另外在实际终端检验。

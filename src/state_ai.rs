@@ -48,7 +48,7 @@ pub struct AiPageState {
     /// 探测是否已启动（进入页面时触发一次，幂等防重入）。
     pub started: bool,
     pub phase: AiPhase,
-    /// 本页检测历史（最新在前；跨重启从 `.data/` 读回）。
+    /// 本页检测历史（最新在前；跨重启从用户历史目录读回）。
     pub history: Vec<HistoryEntry>,
 }
 

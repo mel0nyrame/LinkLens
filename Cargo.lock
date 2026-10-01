@@ -954,25 +954,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "linklens"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "futures-util",
- "getrandom 0.3.4",
- "hickory-resolver",
- "ratatui",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "tokio",
- "tokio-rustls",
- "url",
- "webpki-roots 0.26.11",
-]
-
-[[package]]
 name = "ipconfig"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1111,6 +1092,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e752191d037c44ad111a8caa762921926658402f01cc1253f7bef2020ece4f5e"
 dependencies = [
  "bitflags 2.13.2",
+]
+
+[[package]]
+name = "linklens"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "futures-util",
+ "getrandom 0.3.4",
+ "hickory-resolver",
+ "ratatui",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "url",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
