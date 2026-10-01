@@ -442,15 +442,16 @@ mod tests {
                 9,
             ),
             (r#"{"trust_score":80}"#, 9, 9),
+            (r#"{"trust_score":86}"#, 10, 10),
             (
                 r#"{"trust_score":80,"countryCode":"us","registered_country_code":"jp"}"#,
                 8,
                 8,
             ),
             (
-                r#"{"trust_score":80,"countryCode":"us","registered_country_code":"us","company_type":"business"}"#,
-                9,
-                9,
+                r#"{"trust_score":80,"countryCode":"us","registered_country_code":"us","company_type":"business","is_public_service":true}"#,
+                8,
+                8,
             ),
             (r#"{"trust_score":80,"is_datacenter":true}"#, 6, 5),
             (r#"{"trust_score":80,"company_type":"hosting"}"#, 6, 5),
@@ -479,7 +480,16 @@ mod tests {
             (r#""is_tor":true"#, 7, 6),
             (r#""is_proxy":true,"is_vpn":true,"is_tor":true"#, 7, 6),
             (r#""is_abuser":true"#, 8, 8),
-            (r#""is_crawler":true"#, 8, 8),
+            (
+                r#""is_abuser":true,"countryCode":"us","registered_country_code":"us""#,
+                9,
+                8,
+            ),
+            (
+                r#""is_crawler":true,"countryCode":"us","registered_country_code":"us""#,
+                8,
+                8,
+            ),
         ] {
             let d = fact(&format!(r#"{{"trust_score":80,{flags}}}"#));
             assert_eq!(
@@ -520,6 +530,13 @@ mod tests {
                 expected,
                 "{intel}"
             );
+        }
+        // 无人类+0.5时的互补样例，使0.5与1分罚项不能被最终取整掩盖。
+        for (raw, expected) in [(0.0101, 8), (0.0251, 7), (0.0501, 6)] {
+            let d = fact(&format!(
+                r#"{{"trust_score":80,"is_public_service":true,"intelligence":{{"abuser_score_raw":{raw}}}}}"#
+            ));
+            assert_eq!(super::scene_score(&d, Scene::Ai).unwrap().score, expected);
         }
         let d = fact(r#"{"trust_score":80,"abuser_score":"0.08 (High)"}"#);
         assert_eq!(super::scene_score(&d, Scene::Ai).unwrap().score, 7);
