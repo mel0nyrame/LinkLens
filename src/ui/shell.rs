@@ -7,14 +7,15 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::{App, Page};
-use crate::theme::color::{THEME_ACCENT, THEME_MUTED};
+use crate::state::AppState;
+use crate::theme::color::{THEME_ACCENT, THEME_MUTED, THEME_WARNING};
 use crate::theme::icon::{self, Icon};
 use crate::theme::widget::badge;
 use crate::ui::layout::card_grid_columns;
 use crate::ui::pages;
 
-/// 渲染整个应用外壳。
-pub fn render(f: &mut Frame, app: &App) {
+/// 渲染整个应用外壳（对共享状态做快照读取）。
+pub fn render(f: &mut Frame, state: &AppState) {
     let [title_bar, tabs_bar, content, help_bar] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
@@ -24,9 +25,9 @@ pub fn render(f: &mut Frame, app: &App) {
     .areas(f.area());
 
     render_title(f, title_bar);
-    render_tabs(f, tabs_bar, app);
-    render_page(f, content, app.page);
-    render_help(f, help_bar);
+    render_tabs(f, tabs_bar, &state.app);
+    render_page(f, content, state);
+    render_help(f, help_bar, state.app.hide_ip);
 }
 
 fn render_title(f: &mut Frame, area: Rect) {
@@ -58,22 +59,25 @@ fn render_tabs(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-fn render_page(f: &mut Frame, area: Rect, page: Page) {
-    match page {
-        Page::IpQuery => pages::ip_query::render(f, area),
+fn render_page(f: &mut Frame, area: Rect, state: &AppState) {
+    match state.app.page {
+        Page::IpQuery => pages::ip_query::render(f, area, &state.home, state.app.hide_ip),
         Page::Claude => pages::claude::render(f, area),
         Page::Gpt => pages::gpt::render(f, area),
         Page::IpScore => pages::ip_score::render(f, area),
         Page::DnsLeak => pages::dns_leak::render(f, area),
         Page::WebRtc => pages::webrtc::render(f, area),
-        Page::Connectivity => pages::connectivity::render(f, area),
+        Page::Connectivity => pages::connectivity::render(f, area, &state.link),
     }
 }
 
-fn render_help(f: &mut Frame, area: Rect) {
-    let line = Line::styled(
-        "←/→ 或 h/l 顺序切换 · 1-7 直达页面 · q/Esc/Ctrl+C 退出",
+fn render_help(f: &mut Frame, area: Rect, hide_ip: bool) {
+    let mut spans = vec![Span::styled(
+        "←/→ 或 h/l 顺序切换 · 1-7 直达页面 · i 切换隐藏 IP · q/Esc/Ctrl+C 退出",
         Style::new().fg(THEME_MUTED),
-    );
-    f.render_widget(Paragraph::new(line), area);
+    )];
+    if hide_ip {
+        spans.push(Span::styled(" · 已隐藏 IP", Style::new().fg(THEME_WARNING)));
+    }
+    f.render_widget(Paragraph::new(Line::from(spans)), area);
 }

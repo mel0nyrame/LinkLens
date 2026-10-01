@@ -8,6 +8,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use futures_util::StreamExt;
 use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
 
+use crate::{probe, state};
 use crate::theme::icon::Icon;
 use crate::ui;
 
@@ -115,39 +116,49 @@ impl App {
     }
 }
 
-/// 运行终端应用：初始化终端、事件循环、恢复终端。
+/// 运行终端应用：初始化终端、启动后台探测、事件循环、恢复终端。
 ///
 /// 无论循环以何种方式结束（正常退出、绘制或读取事件失败）都会恢复终端状态；
 /// panic 时的恢复由 `ratatui::try_init` 安装的钩子负责。
+/// 探测任务通过共享状态 + 通知驱动重绘：键位事件与数据更新都会唤醒循环。
 pub async fn run() -> std::io::Result<()> {
     let mut terminal = ratatui::try_init()?;
     let mut events = EventStream::new();
-    let mut app = App::default();
-    let mut io_error = None;
+    let shared = state::SharedState::new();
+    probe::spawn_home(shared.clone());
+    let mut link_spawned = false;
 
-    while !app.should_quit {
-        if let Err(err) = terminal.draw(|f| ui::shell::render(f, &app)) {
-            io_error = Some(err);
-            break;
+    let result = loop {
+        // 首次进入连通页时启动 47 目标测量（仅一次）
+        if !link_spawned && shared.lock().app.page == Page::Connectivity {
+            probe::spawn_link(shared.clone());
+            link_spawned = true;
         }
-        match events.next().await {
-            Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
-                app.handle_key(key.code, key.modifiers);
+
+        {
+            let snapshot = shared.lock();
+            if let Err(err) = terminal.draw(|f| ui::shell::render(f, &snapshot)) {
+                break Err(err);
             }
-            Some(Ok(_)) => {}
-            Some(Err(err)) => {
-                io_error = Some(err);
-                break;
-            }
-            None => break,
         }
-    }
+
+        tokio::select! {
+            event = events.next() => {
+                match event {
+                    Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
+                        shared.lock().app.handle_key(key.code, key.modifiers);
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(err)) => break Err(err),
+                    None => break Ok(()),
+                }
+            }
+            _ = shared.changed() => {}
+        }
+    };
 
     let _ = ratatui::try_restore();
-    match io_error {
-        Some(err) => Err(err),
-        None => Ok(()),
-    }
+    result
 }
 
 #[cfg(test)]
