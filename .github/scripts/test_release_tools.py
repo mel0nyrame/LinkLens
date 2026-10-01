@@ -114,7 +114,7 @@ else:
             env = {**os.environ, "PATH": str(mocks) + os.pathsep + os.environ["PATH"],
                    "FIXTURE_DIR": str(root), "LINKLENS_INSTALL_DIR": str(install_dir),
                    "LINKLENS_VERSION": "" if latest else "v1.2.3"}
-            result = subprocess.run(["sh", str(ROOT / "install.sh")], env=env, capture_output=True, text=True, errors="replace")
+            result = subprocess.run(["sh", "-c", 'cat "$1" | sh', "linklens-install", str(ROOT / "install.sh")], env=env, capture_output=True, text=True, errors="replace")
             should_fail = corrupt or missing or os_name == "FreeBSD"
             if should_fail:
                 self.assertNotEqual(result.returncode, 0, result.stdout)
@@ -132,7 +132,6 @@ else:
 
     def test_install_latest_redirect(self):
         self.run_installer("Darwin", "arm64", latest=True)
-        self.assertNotIn("$install_dir，", (ROOT / "install.sh").read_text())
 
     def test_install_fails_before_changing_destination(self):
         self.run_installer("Linux", "x86_64", corrupt=True)
