@@ -25,6 +25,11 @@ LinkLens 是 Rust 终端网络诊断工具。产品名写作 **LinkLens**，主�
 - 新功能和验收要求写入本地 Markdown tracker；目录、状态和关闭约定见 [issue-tracker.md](docs/agents/issue-tracker.md)，需要分诊标签时读取 [triage-labels.md](docs/agents/triage-labels.md)。现有七页规格位于 [.scratch/linklens/spec.md](.scratch/linklens/spec.md)。
 - 交付说明报告实际修改、实际检查及验证边界。提交说明使用 LinkLens 的功能语义；push 和后续历史改写分别需要用户明确授权。
 
+## 发布维护
+
+- 分支职责：`dev` 保存源码和开发历史，`main` 是独立的展示入口，保持一次初始化提交。修改首页或发布文件后同步两边；`main` 的允许文件与同步方法见 [发布维护](.github/RELEASING.md)。
+- 修改 CI、安装脚本、发布版本或 Release 文案前，读取 [发布维护](.github/RELEASING.md)，按其验证和交付步骤执行。Release 文案由维护者逐版本编写，以 `.github/releases/vX.Y.Z.md` 为唯一来源，打标签前完成。
+
 ## 库文档
 
 涉及库、SDK、API 或 CLI 的具体用法时，通过 Context7 先 `resolve-library-id`，再按单一概念 `query-docs`。纯业务逻辑、代码审查和一般编程概念不需要库文档查询。

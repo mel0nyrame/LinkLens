@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: isolated transparent raster subject for the light GitHub README cover of LinkLens, an IP detection terminal tool.
+Primary request: a polished, compact editorial 3D illustration of a magnifying lens inspecting a light-colored terminal information panel. The panel contains a small terminal prompt chevron and three orderly rows of segmented blocks and dots suggesting IP address records, not actual text. This symbolizes inspecting IP information rather than a generic search website.
+Subject: one ivory terminal panel with mint inset rows, a substantial translucent pale-teal glass magnifying lens overlapping one row, a restrained teal rim and short handle angled lower right. Soft realistic glass refraction and matte ceramic-like surfaces, subtle depth, clean silhouette.
+Composition/framing: one centered compact cluster, nearly frontal three-quarter angle, generous transparent padding, all parts fully visible. Designed to fit a roughly square region on the right of a wide cover; no background scene.
+Lighting/mood: bright diffuse daylight, calm precise technical feel, gentle shadows within subject only.
+Color palette: ivory #f4faf8, pale mint #e1efea, muted sea green #50716b, teal #216659. Light theme only.
+Constraints: genuinely transparent background and corners; no words, letters, numbers, logos, watermark, dark terminal screen, padlock, shield, globe, server rack, humanoid, or ornamental network circuitry. The only symbolic glyph is a simple terminal prompt chevron. Illustration is conceptual, not a fabricated screenshot.

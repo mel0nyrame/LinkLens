@@ -3,6 +3,9 @@ name = "linklens"
 version = "0.1.0"
 edition = "2024"
 default-run = "linklens"
+license = "MIT"
+description = "Interactive terminal IP inspection tool"
+repository = "https://github.com/mel0nyrame/LinkLens"
 
 [lib]
 name = "network_tui"

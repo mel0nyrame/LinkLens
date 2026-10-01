@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: isolated transparent subject for the LinkLens light README keyboard guide.
+Primary request: a compact set of four beautifully crafted blank keyboard keycaps, in two closely spaced staggered rows. One subtle raised direction-chevron shape on one cap, all other caps blank. Explain tangible terminal keyboard operation through a clean, satisfying physical object, not a full keyboard or computer.
+Style/medium: polished editorial 3D render, matte ivory ceramic-like surfaces, pale mint key bases, gentle bevels and one restrained teal edge accent. Rounded corners match the previously approved LinkLens cover.
+Composition/framing: centered compact cluster with all four keycaps fully visible, mild three-quarter view, generous transparent padding, no backdrop or floor, enough depth to read the key travel.
+Lighting/mood: bright soft diffuse daylight, calm technical clarity.
+Color palette: ivory #f4faf8, pale mint #e1efea, muted sea green #50716b, teal #216659. Light theme only.
+Constraints: genuine transparent background and corners; no text, letters, numbers, logos, watermark, dark surfaces, security imagery, people or unrelated objects. Exact shortcut labels will be added separately by SVG.

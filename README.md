@@ -1,35 +1,139 @@
 # LinkLens
 
-在终端查询出口 IP，检测 Claude/GPT 出口、DNS/WebRTC 泄漏，查看 IP 评分和网络连通结果。后端使用 net.coffee 接口，协议与响应事实见 [net.coffee 接口报告](docs/research/net-coffee-api.md)。
+<img src="./.assets/readme/hero.png" width="100%" alt="LinkLens：在终端里，看清你的 IP；使用 linklens 或 llens 启动">
 
-在仓库目录使用 Rust 工具链运行：
+**在终端里，看清你的 IP。**
+
+LinkLens 是用 Rust 编写的交互式 IP 检测工具。查询出口地址、查看 IP 评分、对比不同服务的检测结果，常用信息集中在一个终端界面。
+
+[快速开始](#快速开始) · [检测内容](#检测内容) · [操作指南](#操作指南) · [历史记录](#历史记录)
+
+<a href="./.assets/ip_lookup.png">
+  <img src="./.assets/ip_lookup.png" width="100%" alt="LinkLens IP 查询界面：多源出口地址、归属地、IP 类型与连通时延，地址已打码">
+</a>
+
+*实际终端截图，IP 已打码。点击图片可查看原图。*
+
+## 检测内容
+
+<img src="./.assets/readme/overview.svg" width="100%" alt="七个检测页面分为读懂 IP、对比服务、观察网络三组，数字对应页面快捷键">
+
+按 `1`–`7` 切换检测页面，结果会随检测进度逐步更新。
+
+| 页面 | 可以查看 |
+| --- | --- |
+| IP 查询 | 多源出口 IP、归属地、IP 类型与各站点出口汇总 |
+| Claude 检测 | 服务出口 IP、信任分、可用性、服务状态与近期记录 |
+| GPT 检测 | 服务出口 IP、信任分、可用性、服务状态与近期记录 |
+| IP 评分 | 任意 IPv4 / IPv6 的信任分、ASN、运营商、多源定位与场景评分 |
+| DNS 检测 | 快速或深度检测，查看解析器 IP 与归属地 |
+| WebRTC 检测 | 查看 STUN 探测得到的公网 IP 与检测状态 |
+| 网络连通 | 多目标连通检测、成功样本的时延中位数与逐轮进度 |
+
+窗口较宽时，卡片按内容高度组合排列；较窄时切换为单列。长结果可用键盘或鼠标滚轮查看。按 `i` 可隐藏界面中的 IP，方便截图分享。
+
+## 快速开始
+
+<img src="./.assets/readme/first-run.svg" width="100%" alt="首次运行：下载预编译包，输入 linklens 或 llens，首页自动检测当前 IP">
+
+无需安装 Cargo 或 Rust。macOS / Linux 在终端执行：
 
 ```sh
-cargo run --release
+curl -fsSL https://raw.githubusercontent.com/mel0nyrame/LinkLens/main/install.sh | sh
+linklens
 ```
 
-构建使用 `cargo build --release`，产物为 `target/release/linklens` 和 `target/release/llens`。通过 `cargo install --path . --locked` 安装后，可直接输入 `linklens` 或 `llens`；两者启动同一个应用。使用支持 Nerd Font 与中文、emoji 的终端字体。窗口至少 90 列时，卡片按内容高度分组，每行最多三张；信息较多的卡片可独占一行。较窄时按原顺序单列排列。卡片按实际换行高度展开，超出窗口的内容可滚动查看。
+脚本自动选择系统和 CPU 对应的 Release，校验 SHA-256，然后将 `linklens`、`llens` 安装到 `~/.local/bin`。若该目录还未加入 `PATH`，按脚本提示执行一次 `export PATH="$HOME/.local/bin:$PATH"`，并把这行加入你的 shell 配置以供以后使用。
 
-| 操作 | 键位 |
+Windows x64 在 PowerShell 执行：
+
+```powershell
+irm https://raw.githubusercontent.com/mel0nyrame/LinkLens/main/install.ps1 | iex
+linklens
+```
+
+Windows 安装到 `%LOCALAPPDATA%\LinkLens\bin`，并添加到用户 `PATH`。macOS、Linux 和 Windows Git Bash 也可以使用上面的 curl 脚本。安装选项：`LINKLENS_VERSION=v0.1.0` 可指定版本，`LINKLENS_INSTALL_DIR` 可指定目录；重新运行脚本即可更新程序。
+
+也可以从 [Releases](https://github.com/mel0nyrame/LinkLens/releases/latest) 下载并解压匹配的包，直接运行 `linklens` 或 `llens`（Windows 使用 `.exe`），无需工具链。
+
+| 系统 | 预编译架构 |
 | --- | --- |
-| 切换页面 | `1`–`7`，`←`/`→`、`h`/`l`、`Tab`/`Shift+Tab` |
-| 隐藏或显示所有 IP | `i` |
-| 滚动页面 | 鼠标滚轮、`↑`/`↓`，`PageUp`/`PageDown`，`Home`/`End` |
-| 重查首页或当前 Claude/GPT 出口 | `r` |
-| IP 评分输入 | `/` 开始编辑，`Enter` 查询，`Esc` 取消编辑 |
-| DNS 泄漏测试 | `f` 快速 5 轮，`d` 深度 8 轮 |
-| WebRTC 重新检测 | `r` |
-| 网络连通重新测量 | `r`，清空目标进度并从预热开始新一轮 |
-| 退出 | `q`、`Esc`、`Ctrl+C`；输入编辑时 `Esc` 只取消编辑 |
+| Windows | x64 |
+| macOS | Intel x64、Apple Silicon ARM64 |
+| Linux | x64、ARM64（musl） |
 
-输入 IP 时，数字和字母先交给输入框处理。IP 评分接受合法 IPv4/IPv6，查询与后台补全期间仍可切换页面。在查看状态按 `[` / `]` 选择本次运行的最近查询，再按 `Enter` 重新检测；查看状态按 `/` 开始编辑并清空输入；编辑时 `Delete` 清空、`Backspace` 删除末尾字符。
+建议使用支持中文、emoji 和 Nerd Font 图标的终端字体，并将窗口设为至少 90 列，以便查看多列卡片。
 
-首页在启动时探测国内双源与 Cloudflare 出口、6 个目标的连通性，并汇总分流出口；按 `r` 清空三类进度并重新探测。Claude/GPT 页每次检测（含 `r` 重查）并行重新采集国内、Cloudflare 与平台出口，展示信任分、属性、安全信号、服务状态与检测历史；受限地区显示红色不可访问提示。IP 评分页可查询任意合法地址，包含深度资料、场景评分和 BGP、DNSBL、Radar 等增强信息，并标注公共服务 IP 的服务与运营商资料；IPv6 不展示不受支持的 C 段热度与 DNSBL 区块。
+<details>
+<summary>从源码构建（dev 分支）</summary>
 
-HTTP 请求遵循 `http_proxy`/`https_proxy`/`all_proxy` 及其大写形式，`no_proxy`/`NO_PROXY` 可指定例外；程序不会把这些 HTTP 代理设置应用到原生探测。连通与可用性时延使用系统网络的 TCP/TLS 握手测量，DNS 使用系统解析器，STUN 使用原生 UDP；它们与 HTTP 代理可能走不同链路。系统代理模式下 UDP 不通或没有 STUN 候选，不能据此认定没有泄漏；使用 TUN 模式时再对照公网 UDP 与 HTTP 出口。所有结果都描述本次实际探测到的链路。延迟值只计算 TCP 连接和 TLS 握手，不含 DNS 耗时，也不等待响应体；单次总耗时上限 8 秒涵盖 DNS 和全部地址尝试。首页每目标预热 1 次后测 12 轮，网络连通页预热后测 8 轮，取成功样本上中位数。
+先安装 [Rust 工具链](https://www.rust-lang.org/tools/install)，再运行：
 
-Claude/GPT 只在取得出口 IP 和有效信任分后记录历史，缺失分值不写成 0；历史保存在 `~/.config/linklens/datas/`，同 IP 24 小时内去重，每平台保留最新 6 条。两个命令和所有启动位置共用历史。目录自动创建；删除对应的 `claude-history.json` 或 `gpt-history.json` 可清空该平台记录。主目录不可用时只保留本次内存历史。
+```sh
+git clone --branch dev https://github.com/mel0nyrame/LinkLens.git
+cd LinkLens
+cargo install --path . --locked
+linklens
+```
 
-数据与探测边界：LinkLens 不发送 `/api/session` 统计上报，不加载统计脚本，也没有浏览器指纹或设备信息检测；DNS/STUN 使用原生系统网络。公网探测采用 8 秒上限，DNS 结果回读请求单独设为 5 秒；聚合查询使用各接口自己的时限：AI 风险请求 10 秒，评分主查询 45 秒，BGP 22 秒，Radar 14 秒，其余 v2 增强请求 15 秒。网络失败、缺少参照数据与不支持的区块会显示相应状态。
+短命令 `llens` 使用同样的界面与历史记录。也可以通过 `cargo run --release` 直接运行，或通过 `cargo build --release --bins` 构建两个命令。
 
-开发验证：`cargo test`、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`。需要真实网络或 UDP socket 的冒烟测试默认跳过，可用 `cargo test --lib -- --ignored` 显式运行。终端布局与操作需另外在实际终端检验。
+</details>
+
+## 操作指南
+
+<img src="./.assets/readme/controls.png" width="100%" alt="LinkLens 常用操作：1–7 换页、/ 输入 IP、r 重新检测、i 隐藏 IP">
+
+| 操作 | 按键 |
+| --- | --- |
+| 切换页面 | `1`–`7`、`←` / `→`、`Tab` / `Shift+Tab` |
+| 滚动结果 | 鼠标滚轮、`↑` / `↓`、`PageUp` / `PageDown` |
+| 跳到首尾 | `Home` / `End` |
+| 隐藏或显示 IP | `i` |
+| 重新检测 | `r`，用于 IP 查询、Claude、GPT、IP 评分、WebRTC 和网络连通页 |
+| DNS 快速 / 深度检测 | `f` / `d`，分别运行 5 / 8 轮 |
+| 退出 | `q`、`Esc` 或 `Ctrl+C` |
+
+**查询指定 IP：** 切换到 IP 评分页，按 `/` 输入 IPv4 或 IPv6，再按 `Enter`。按 `Esc` 取消编辑；查看结果时，用 `[` / `]` 选择本次运行的近期查询，再按 `Enter` 重新检测。
+
+输入框处于编辑状态时，字符会优先用于输入，`Esc` 只取消编辑。
+
+## 历史记录
+
+<img src="./.assets/readme/history.png" width="100%" alt="Claude 和 GPT 历史保存在用户目录，每平台最新六条，同 IP 在二十四小时内去重">
+
+Claude / GPT 检测在取得出口 IP 和有效信任分后保存记录，每个平台保留最新 6 条，同一 IP 在 24 小时内去重。
+
+```text
+~/.config/linklens/datas/
+├── claude-history.json
+└── gpt-history.json
+```
+
+目录自动创建。`linklens` 和 `llens` 从任意目录启动都使用这份历史；删除对应 JSON 文件可清空该平台记录。主目录不可用时，仅保留本次运行的内存记录。
+
+## 数据来源与结果说明
+
+<img src="./.assets/readme/data-sources.svg" width="100%" alt="LinkLens IP 资料与实际探测分别说明来源和状态">
+
+LinkLens 的部分 IP 资料与评分使用 net.coffee 后端接口，接口事实整理在 [net.coffee 接口报告](https://github.com/mel0nyrame/LinkLens/blob/dev/docs/research/net-coffee-api.md)。出口地址、DNS、STUN 与连通结果由对应探测获取。
+
+结果反映本次检测时的网络和数据源状态。信任分可能按网段聚合，段代表 IP 可能与查询 IP 不同；时延计算 TCP 连接与 TLS 握手耗时。暂未取得、请求失败或不支持的数据会显示相应状态。
+
+## 参与开发
+
+`main` 是展示与发布入口，源码及开发历史位于 [`dev`](https://github.com/mel0nyrame/LinkLens/tree/dev)。在 `dev` 仓库根目录运行检查：
+
+```sh
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
+```
+
+真实网络冒烟测试默认跳过，可用 `cargo test --lib -- --ignored` 单独运行。界面与输入行为还需在实际终端验证。
+
+提交代码时，CI 运行测试、格式和 Clippy 检查；只改 Markdown、文档图片或协议文件时，运行文档检查。发布标签使用 `v主版本.次版本.修订版本`，Release 文案由维护者编写后随版本保存。
+
+## 协议
+
+LinkLens 使用 [MIT License](LICENSE)。
