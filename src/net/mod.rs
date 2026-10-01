@@ -14,3 +14,5 @@ pub mod latency;
 pub mod split;
 pub mod targets;
 pub mod trace;
+
+pub mod status;

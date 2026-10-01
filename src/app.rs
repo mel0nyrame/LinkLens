@@ -1,8 +1,9 @@
-//! 应用状态与键位导航：页面切换、隐藏 IP 开关、退出。
+//! 应用状态与键位导航：页面切换、隐藏 IP 开关、AI 页重查、退出。
 //!
 //! 键位约定：`1`-`7` 直达页面，`←`/`→`（或 `h`/`l`、`Tab`/`Shift+Tab`）顺序循环，
-//! `i` 切换隐藏 IP 打码，`q`/`Esc`/`Ctrl+C` 退出。带输入框的页面在后续票中
-//! 先行消费按键，再回落到此层。隐藏 IP 是全局开关：影响所有页面的 IP 显示。
+//! `i` 切换隐藏 IP 打码，`r` 在 Claude/GPT 检测页重查，`q`/`Esc`/`Ctrl+C` 退出。
+//! 带输入框的页面在后续票中先行消费按键，再回落到此层。
+//! 隐藏 IP 是全局开关：影响所有页面的 IP 显示。
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use futures_util::StreamExt;
@@ -10,7 +11,7 @@ use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
 
 use crate::theme::icon::Icon;
 use crate::ui;
-use crate::{probe, state};
+use crate::{probe, probe_ai, state};
 
 /// 七个功能页，顺序即导航顺序，也是数字键 `1`-`7` 的直达目标。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -82,12 +83,14 @@ impl Page {
     }
 }
 
-/// 应用状态：当前页面、隐藏 IP 开关与退出标记。
+/// 应用状态：当前页面、隐藏 IP 开关、AI 页重查请求与退出标记。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct App {
     pub page: Page,
     /// 隐藏 IP 开关：开启后界面所有 IP 打码显示（方便截图分享）。
     pub hide_ip: bool,
+    /// `r` 键置位的重查请求（仅 Claude/GPT 页），事件循环消费后复位。
+    pub ai_refresh: bool,
     pub should_quit: bool,
 }
 
@@ -102,6 +105,9 @@ impl App {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => self.should_quit = true,
             KeyCode::Char('i') => self.hide_ip = !self.hide_ip,
+            KeyCode::Char('r') if matches!(self.page, Page::Claude | Page::Gpt) => {
+                self.ai_refresh = true;
+            }
             KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => {
                 self.page = self.page.previous();
             }
@@ -133,6 +139,24 @@ pub async fn run() -> std::io::Result<()> {
         if !link_spawned && shared.lock().app.page == Page::Connectivity {
             probe::spawn_link(shared.clone());
             link_spawned = true;
+        }
+
+        // 首次进入 Claude/GPT 页时启动对应检测（幂等）
+        probe_ai::spawn_for_page_if_needed(shared.clone());
+
+        // `r` 键重查当前 AI 检测页
+        let refresh_page = {
+            let mut snapshot = shared.lock();
+            let page = snapshot.app.page;
+            if snapshot.app.ai_refresh {
+                snapshot.app.ai_refresh = false;
+                Some(page)
+            } else {
+                None
+            }
+        };
+        if let Some(page) = refresh_page {
+            probe_ai::request_refresh(&shared, page);
         }
 
         {
@@ -267,5 +291,23 @@ mod tests {
         assert!(!app.should_quit);
         app.handle_key(KeyCode::Char('i'), KeyModifiers::NONE);
         assert!(!app.hide_ip);
+    }
+
+    #[test]
+    fn r_key_requests_ai_refresh_on_ai_pages_only() {
+        for page in [Page::Claude, Page::Gpt] {
+            let mut app = App {
+                page,
+                ..App::default()
+            };
+            app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
+            assert!(app.ai_refresh, "{page:?} 页 r 应请求重查");
+        }
+        // 非 AI 页不置位，也不影响其他行为
+        let mut app = App::default();
+        app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(!app.ai_refresh, "非 AI 页 r 不置位");
+        assert!(!app.should_quit);
+        assert_eq!(app.page, Page::IpQuery);
     }
 }

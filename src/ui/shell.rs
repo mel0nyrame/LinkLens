@@ -62,8 +62,8 @@ fn render_tabs(f: &mut Frame, area: Rect, app: &App) {
 fn render_page(f: &mut Frame, area: Rect, state: &AppState) {
     match state.app.page {
         Page::IpQuery => pages::ip_query::render(f, area, &state.home, state.app.hide_ip),
-        Page::Claude => pages::claude::render(f, area),
-        Page::Gpt => pages::gpt::render(f, area),
+        Page::Claude => pages::claude::render(f, area, state),
+        Page::Gpt => pages::gpt::render(f, area, state),
         Page::IpScore => pages::ip_score::render(f, area),
         Page::DnsLeak => pages::dns_leak::render(f, area),
         Page::WebRtc => pages::webrtc::render(f, area),
@@ -73,7 +73,7 @@ fn render_page(f: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_help(f: &mut Frame, area: Rect, hide_ip: bool) {
     let mut spans = vec![Span::styled(
-        "←/→ 或 h/l 顺序切换 · 1-7 直达页面 · i 切换隐藏 IP · q/Esc/Ctrl+C 退出",
+        "←/→ 或 h/l 顺序切换 · 1-7 直达页面 · i 切换隐藏 IP · r 重查当前 AI 检测页 · q/Esc/Ctrl+C 退出",
         Style::new().fg(THEME_MUTED),
     )];
     if hide_ip {
