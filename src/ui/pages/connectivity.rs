@@ -4,7 +4,7 @@
 //! 组头给出可达数与组内中位延迟平均；与首页 6 目标小卡共用同一计时工具
 //! （`net::latency`，预热 1 次 + 8 轮取中位数）。
 //!
-//! 布局：宽 ≥90 列时四组两两并排（2×2），窄终端单列纵排，超出部分通过整页滚动查看。
+//! 布局：宽屏将目标数量接近的组并排，窄终端按原顺序单列排列，超出部分可滚动查看。
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -32,37 +32,17 @@ pub fn canvas(width: u16, link: &LinkState) -> Buffer {
             ],
         );
     }
-    let columns = if width >= crate::ui::layout::GRID_MIN_WIDTH {
-        2
-    } else {
-        1
-    };
-    let column_width = width.saturating_sub(columns - 1) / columns;
-    let cards: Vec<_> = GROUPS
-        .iter()
-        .enumerate()
-        .map(|(i, group)| group_card(column_width, i, group.flag, group.name, link))
-        .collect();
-    let mut y = 1u16;
-    let mut rects = Vec::new();
-    for row in cards.chunks(usize::from(columns)) {
-        let height = row
-            .iter()
-            .map(|p| p.line_count(column_width.saturating_sub(4).max(1)))
-            .max()
-            .unwrap_or(2)
-            .min(usize::from(u16::MAX)) as u16;
-        for col in 0..row.len() {
-            rects.push(Rect::new(
-                col as u16 * (column_width + 1),
-                y,
-                column_width,
-                height,
-            ));
-        }
-        y = y.saturating_add(height).saturating_add(1);
+    let (mut rects, height) =
+        crate::ui::layout::measured_card_rects(width, GROUPS.len(), |i, card_width| {
+            let group = &GROUPS[i];
+            group_card(card_width, i, group.flag, group.name, link)
+                .line_count(card_width)
+                .min(usize::from(u16::MAX)) as u16
+        });
+    for rect in &mut rects {
+        rect.y = rect.y.saturating_add(1);
     }
-    let mut buffer = Buffer::empty(Rect::new(0, 0, width, y.saturating_sub(1)));
+    let mut buffer = Buffer::empty(Rect::new(0, 0, width, height.saturating_add(1)));
     let completed = link.targets.iter().filter(|t| t.done).count();
     Paragraph::new(format!(
         "第 {} 次测量 · {}/{} 已完成 · r 从头重测",
@@ -72,8 +52,9 @@ pub fn canvas(width: u16, link: &LinkState) -> Buffer {
     ))
     .style(Style::new().fg(THEME_TEXT))
     .render(Rect::new(0, 0, width, 1), &mut buffer);
-    for (paragraph, rect) in cards.into_iter().zip(rects) {
-        paragraph.render(rect, &mut buffer);
+    for (i, rect) in rects.into_iter().enumerate() {
+        let group = &GROUPS[i];
+        group_card(rect.width, i, group.flag, group.name, link).render(rect, &mut buffer);
     }
     buffer
 }

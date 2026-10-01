@@ -15,7 +15,7 @@ pub struct LinkGroup {
     pub flag: &'static str,
 }
 
-/// 四组顺序即页面呈现顺序。
+/// 四组的索引顺序，用于目标归组。
 pub const GROUPS: [LinkGroup; 4] = [
     LinkGroup {
         name: "中国",
