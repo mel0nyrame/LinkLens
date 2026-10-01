@@ -151,10 +151,11 @@ async fn probe_home_egress(client: &reqwest::Client, shared: SharedState) {
         (None, None) => {}
     }
 
-    // Cloudflare 出口卡
+    // Cloudflare 出口卡（无国内源文本，归属地直接由 geoip 拼中文）
     if let Some(ip) = rcf.and_then(|trace_data| trace_data.ip) {
         let geoip_data = geoip::fetch_geoip(client, &ip).await;
-        let mut card = assemble_card("Cloudflare 出口", &ip, "", "", geoip_data.as_ref());
+        let geo = geoip_data.as_ref().map(crate::net::cc::chinese_location).unwrap_or_default();
+        let mut card = assemble_card("Cloudflare 出口", &ip, &geo, "Cloudflare trace", geoip_data.as_ref());
         card.badges = fetch_badges(client, &ip).await;
         cards.push(card);
     }

@@ -196,25 +196,32 @@ pub fn validate_geo(geoip: Option<&GeoIp>, candidates: &[GeoCandidate]) -> Resol
 }
 
 /// 用标准中文国名 + geoip 的 region/city/isp 重拼中文归属地。
-fn rebuild_from_geoip(cc: &str, geoip: Option<&GeoIp>) -> ResolvedGeo {
+fn rebuild_from_geoip(_cc: &str, geoip: Option<&GeoIp>) -> ResolvedGeo {
     let geo = geoip.expect("重拼分支只在国别码非空时进入，必有 geoip");
-    let name = cn_name(cc).unwrap_or(geo.country.as_str()).to_string();
-    let mut parts = vec![name];
-    if !geo.region.is_empty() && geo.region != geo.city {
-        parts.push(geo.region.clone());
+    ResolvedGeo { geo: chinese_location(geo), source: CORRECTED_SOURCE.to_string() }
+}
+
+/// 仅凭 geoip 拼中文归属地：中文国名（表外用英文国名兜底）+ region/city/isp。
+///
+/// 供无国内源候选文本的卡（如 Cloudflare 出口）直接使用。
+pub fn chinese_location(geoip: &GeoIp) -> String {
+    let cc = geoip.country_code.to_lowercase();
+    let mut parts = vec![cn_name(&cc).unwrap_or(geoip.country.as_str()).to_string()];
+    if !geoip.region.is_empty() && geoip.region != geoip.city {
+        parts.push(geoip.region.clone());
     }
-    if !geo.city.is_empty() {
-        parts.push(geo.city.clone());
+    if !geoip.city.is_empty() {
+        parts.push(geoip.city.clone());
     }
-    if !geo.isp.is_empty() {
-        parts.push(geo.isp.clone());
+    if !geoip.isp.is_empty() {
+        parts.push(geoip.isp.clone());
     }
-    ResolvedGeo { geo: parts.join(" "), source: CORRECTED_SOURCE.to_string() }
+    parts.join(" ")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CC_TO_CN_NAME, CC_TO_CN_PREFIX, GeoCandidate, ResolvedGeo, cn_name, cn_prefixes, matches_prefix, validate_geo};
+    use super::{CC_TO_CN_NAME, CC_TO_CN_PREFIX, GeoCandidate, ResolvedGeo, chinese_location, cn_name, cn_prefixes, matches_prefix, validate_geo};
     use crate::net::geoip::GeoIp;
 
     fn candidate(geo: &str, source: &'static str) -> GeoCandidate {
@@ -338,5 +345,34 @@ mod tests {
             resolved,
             ResolvedGeo { geo: "日本".into(), source: "GeoIP（地区库纠正）".into() }
         );
+    }
+
+    #[test]
+    fn chinese_location_built_from_geoip_alone() {
+        let geo = GeoIp {
+            country: "United States".into(),
+            country_code: "us".into(),
+            region: "Virginia".into(),
+            city: "Ashburn".into(),
+            isp: "Amazon.com".into(),
+        };
+        assert_eq!(chinese_location(&geo), "美国 Virginia Ashburn Amazon.com");
+    }
+
+    #[test]
+    fn chinese_location_outside_table_falls_back_to_country() {
+        let geo = GeoIp { country: "Freedonia".into(), country_code: "zz".into(), ..GeoIp::default() };
+        assert_eq!(chinese_location(&geo), "Freedonia");
+    }
+
+    #[test]
+    fn chinese_location_region_equal_to_city_deduplicated() {
+        let geo = GeoIp {
+            country_code: "sg".into(),
+            region: "Singapore".into(),
+            city: "Singapore".into(),
+            ..GeoIp::default()
+        };
+        assert_eq!(chinese_location(&geo), "新加坡 Singapore");
     }
 }
