@@ -25,13 +25,15 @@ pub fn render(f: &mut Frame, state: &AppState) {
 }
 
 fn shell_areas(area: Rect) -> [Rect; 4] {
-    Layout::vertical([
+    let [title, tabs, _, content, help] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
     ])
-    .areas(area)
+    .areas(area);
+    [title, tabs, content, help]
 }
 
 pub fn content_area(area: Rect) -> Rect {
