@@ -308,6 +308,23 @@ impl DnsblResult {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum PollDecision {
+    Done,
+    Again,
+    TimedOut,
+}
+
+pub fn poll_decision(pending: bool, attempt: u8, limit: u8) -> PollDecision {
+    if !pending {
+        PollDecision::Done
+    } else if attempt >= limit {
+        PollDecision::TimedOut
+    } else {
+        PollDecision::Again
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,5 +398,13 @@ mod tests {
         assert_eq!(d.results[2].verdict(), "超时");
         assert_eq!(d.results[3].verdict(), "查询失败");
         assert_eq!(d.results[4].verdict(), "纯净");
+    }
+    #[test]
+    fn pending_polling_finishes_or_stops_at_the_ticket_budget() {
+        assert_eq!(poll_decision(false, 10, 10), PollDecision::Done);
+        assert_eq!(poll_decision(true, 9, 10), PollDecision::Again);
+        assert_eq!(poll_decision(true, 10, 10), PollDecision::TimedOut);
+        assert_eq!(poll_decision(true, 11, 12), PollDecision::Again);
+        assert_eq!(poll_decision(true, 12, 12), PollDecision::TimedOut);
     }
 }

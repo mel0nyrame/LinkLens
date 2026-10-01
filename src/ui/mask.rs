@@ -57,6 +57,35 @@ fn is_ipv4(text: &str) -> bool {
             .all(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_digit()))
 }
 
+/// 对判词、历史字段等自由文本中的地址也应用全局打码（保留 CIDR 掩码等上下文）。
+pub fn display_ip_text(text: &str, hide: bool) -> String {
+    if !hide {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    let mut offset = 0;
+    while offset < text.len() {
+        let tail = &text[offset..];
+        let len = tail
+            .bytes()
+            .take_while(|b| b.is_ascii_hexdigit() || *b == b'.' || *b == b':')
+            .count()
+            .min(64);
+        let address = (1..=len)
+            .rev()
+            .find(|&end| tail[..end].parse::<std::net::IpAddr>().is_ok());
+        if let Some(end) = address {
+            out.push_str(&mask_ip(&tail[..end]));
+            offset += end;
+        } else {
+            let c = tail.chars().next().expect("非空 tail");
+            out.push(c);
+            offset += c.len_utf8();
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::{compact_ipv6, display_ip, mask_ip};
@@ -104,5 +133,15 @@ mod tests {
     #[test]
     fn compact_ipv4_is_untouched() {
         assert_eq!(compact_ipv6("192.0.2.216"), "192.0.2.216");
+    }
+    #[test]
+    fn privacy_masks_cidr_embedded_ipv6_and_reverse_domain_addresses() {
+        let input =
+            "出口 8.8.8.8，网段 8.8.8.0/24，[2606:4700:4700::1111] pool-1.2.3.4.example AS15169";
+        assert_eq!(
+            super::display_ip_text(input, true),
+            "出口 8.8.*.*，网段 8.8.*.*/24，[2606:4700:*] pool-1.2.*.*.example AS15169"
+        );
+        assert_eq!(super::display_ip_text(input, false), input);
     }
 }

@@ -124,6 +124,7 @@ pub struct AppState {
     pub link: LinkState,
     /// Claude/GPT 检测页状态（详见 `state_ai`）。
     pub ai: AiState,
+    pub score: crate::state_score::ScoreState,
 }
 
 /// 线程安全的共享句柄：互斥锁 + 变更通知。
