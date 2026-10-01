@@ -123,6 +123,13 @@ pub fn spawn_link(shared: SharedState) {
 
 /// 首页出口三卡：国内双源（主/备）+ Cloudflare 出口。
 async fn probe_home_egress(client: &reqwest::Client, shared: SharedState) {
+    let cards = fetch_egress_cards(client).await;
+    shared.lock().home.egress = EgressPhase::Ready(cards);
+    shared.notify();
+}
+
+/// 并行采集国内双源和 Cloudflare 出口并补全卡片；不写页面状态。
+pub(crate) async fn fetch_egress_cards(client: &reqwest::Client) -> Vec<EgressCard> {
     let cn_138 = cn_source::fetch_ip138(client);
     let cn_ipcn = cn_source::fetch_my_ip_cn(client);
     let cf_trace = trace::fetch_trace(client, "1.1.1.1");
@@ -194,11 +201,7 @@ async fn probe_home_egress(client: &reqwest::Client, shared: SharedState) {
         cards.push(card);
     }
 
-    {
-        let mut state = shared.lock();
-        state.home.egress = EgressPhase::Ready(cards);
-    }
-    shared.notify();
+    cards
 }
 
 /// 组装国内出口卡：geoip 补旗 + 归属地交叉校验 + iprisk 属性徽章。

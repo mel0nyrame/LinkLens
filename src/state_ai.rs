@@ -9,10 +9,13 @@ use crate::net::geoip::GeoIp;
 use crate::net::iprisk::Iprisk;
 use crate::net::status::ServiceStatus;
 use crate::net::trace::Trace;
+use crate::state::EgressCard;
 
 /// 一次 AI 出口检测的完整结果。
 #[derive(Clone, Debug)]
 pub struct AiOutcome {
+    /// 本轮并行采集的国内与 Cloudflare 出口，独立于首页启动快照。
+    pub reference_egress: Vec<EgressCard>,
     /// AI 出口 trace（`ip=` 出口 IP 与 `loc=` 地区码）。
     pub exit: Option<Trace>,
     /// 出口 IP 的风险库记录（响应 `ip` 可能是 /24 段代表 IP）。
@@ -50,6 +53,16 @@ pub struct AiPageState {
 }
 
 impl AiPageState {
+    /// 认领一轮探测；调用方持锁时同时更新启动标记与阶段。
+    pub fn begin_probe(&mut self) -> bool {
+        if self.probing() {
+            return false;
+        }
+        self.started = true;
+        self.phase = AiPhase::Pending;
+        true
+    }
+
     /// 是否正在探测中。
     pub fn probing(&self) -> bool {
         self.started && matches!(self.phase, AiPhase::Pending)
@@ -80,5 +93,31 @@ impl AiState {
             Page::Gpt => Some(&mut self.gpt),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn begin_probe_claims_pending_atomically_and_rejects_duplicate_starts() {
+        let mut page = AiPageState::default();
+        assert!(page.begin_probe());
+        assert!(page.started && page.probing());
+        assert!(!page.begin_probe());
+        page.phase = AiPhase::Done(Box::new(AiOutcome {
+            reference_egress: Vec::new(),
+            exit: None,
+            risk: None,
+            geo: None,
+            geo_from_trace: false,
+            restricted: false,
+            availability: Vec::new(),
+            status: None,
+        }));
+        assert!(page.begin_probe());
+        assert!(page.started && page.probing());
+        assert!(!page.begin_probe());
     }
 }

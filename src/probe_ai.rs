@@ -1,11 +1,11 @@
 //! AI 出口检测编排：Claude/GPT 两页同构探测，一框架参数化复用。
 //!
-//! 流程采用上游接口报告 §3.2/§3.4：三出口并行（国内出口复用首页票 02 双源结果、
+//! 每轮三出口并行（国内出口复用首页的双源采集流程、
 //! Cloudflare 出口 trace 1.1.1.1、AI 出口 trace 平台域名）→ 出口 IP 拉
 //! iprisk + geoip（IPv6 无 geo 时用 trace `loc=` 兜底）→ 可用性探测分档 →
 //! 服务状态 → 历史记录（同 IP 24h 去重，落 `.data/`）。
 //!
-//! 红线：公网探测超时一律 8 秒（`net::http` 客户端级）。
+//! 公网探测采用客户端级 8 秒边界；AI 风险聚合请求单独设为 10 秒。
 
 use crate::app::Page;
 use crate::detect;
@@ -82,7 +82,7 @@ pub fn spawn_for_page_if_needed(shared: SharedState) {
                 if page_state.started {
                     None
                 } else {
-                    page_state.started = true;
+                    page_state.begin_probe();
                     Some(profile)
                 }
             }
@@ -90,11 +90,7 @@ pub fn spawn_for_page_if_needed(shared: SharedState) {
         }
     };
     if let Some(profile) = should_spawn {
-        let client = http::client();
-        let probe = LatencyProbe::new();
-        tokio::spawn(async move {
-            run_page(&client, &probe, shared, profile).await;
-        });
+        spawn_probe(shared, profile);
     }
 }
 
@@ -108,15 +104,24 @@ pub fn request_refresh(shared: &SharedState, page: Page) {
         let Some(page_state) = state.ai.page_mut(profile.page) else {
             return;
         };
-        if page_state.probing() {
+        if !page_state.begin_probe() {
             return;
         }
-        page_state.started = false;
     }
-    spawn_for_page_if_needed(shared.clone());
+    spawn_probe(shared.clone(), profile);
 }
 
-/// 单页完整探测：等首页出口就绪 → AI 出口 trace → iprisk/geoip/可用性/服务状态并行 →
+/// 调用方已在状态锁内认领 Pending，再启动 IO 任务。
+fn spawn_probe(shared: SharedState, profile: &'static AiProfile) {
+    shared.notify();
+    let client = http::client();
+    let probe = LatencyProbe::new();
+    tokio::spawn(async move {
+        run_page(&client, &probe, shared, profile).await;
+    });
+}
+
+/// 单页完整探测：本轮三出口并行 → AI 出口 iprisk/geoip/可用性/服务状态并行 →
 /// 受限判定 → 历史记录 → 写回状态。
 async fn run_page(
     client: &reqwest::Client,
@@ -124,7 +129,7 @@ async fn run_page(
     shared: SharedState,
     profile: &'static AiProfile,
 ) {
-    // 复位阶段并读回持久化历史（重启后可查）
+    // 读回持久化历史（重启后可查）；Pending 已由启动方在同锁内设定。
     let loaded_history = {
         let mut state = shared.lock();
         let path = history::history_path(profile.history_tag);
@@ -133,24 +138,26 @@ async fn run_page(
             .ai
             .page_mut(profile.page)
             .expect("profile 的页面必然在 AiState 中");
-        page_state.phase = AiPhase::Pending;
         page_state.history = loaded.clone();
         drop(state);
         shared.notify();
         loaded
     };
 
-    // AI 出口 trace（这就是「平台看到的你的 IP」）
-    let exit = trace::fetch_trace(client, profile.trace_host).await;
-    let exit_ip = exit.as_ref().and_then(|t| t.ip.clone());
-
-    // 出口已知后，iprisk + geoip、可用性探测、服务状态全部并行
+    // 国内/Cloudflare 与平台出口并行采集，结果只属于当前 AI 页的本轮快照。
+    let (reference_egress, (exit, risk_geo, availability, service_status)) =
+        tokio::join!(crate::probe::fetch_egress_cards(client), async {
+            let exit = trace::fetch_trace(client, profile.trace_host).await;
+            let exit_ip = exit.as_ref().and_then(|t| t.ip.as_deref());
+            let (risk_geo, availability, service_status) = tokio::join!(
+                fetch_risk_and_geo(client, exit_ip, exit.as_ref()),
+                probe_availability(probe, profile),
+                status::fetch_status(client, profile.status_path),
+            );
+            (exit, risk_geo, availability, service_status)
+        });
+    let exit_ip = exit.as_ref().and_then(|t| t.ip.as_deref());
     let exit_trace = exit.as_ref();
-    let (risk_geo, availability, service_status) = tokio::join!(
-        fetch_risk_and_geo(client, exit_ip.as_deref(), exit_trace),
-        probe_availability(probe, profile),
-        status::fetch_status(client, profile.status_path),
-    );
     let (risk, geo, geo_from_trace) = risk_geo;
 
     // 受限判定：出口国别码（geoip 优先，trace loc 兜底）命中硬表
@@ -165,13 +172,15 @@ async fn run_page(
             .unwrap_or(false)
     };
 
-    // 历史记录：拿到出口 IP 才记；同 IP 24h 去重在 history::record 内
+    // 历史记录：有效分值才能新增；缺分不占用同 IP 的 24h 去重窗口。
     if let Some(ip) = exit_ip {
-        let trust = risk.as_ref().and_then(|r| r.trust_score).unwrap_or(0);
+        let trust = risk.as_ref().and_then(|r| r.trust_score);
         let now = history::now_ms();
         let path = history::history_path(profile.history_tag);
-        let entries = history::record(&loaded_history, &ip, trust, restricted, now);
-        let _ = history::save(&path, &entries);
+        let entries = history::record(&loaded_history, ip, trust, restricted, now);
+        if trust.is_some() {
+            let _ = history::save(&path, &entries);
+        }
         let mut state = shared.lock();
         if let Some(page_state) = state.ai.page_mut(profile.page) {
             page_state.history = entries;
@@ -182,6 +191,7 @@ async fn run_page(
         let mut state = shared.lock();
         if let Some(page_state) = state.ai.page_mut(profile.page) {
             page_state.phase = AiPhase::Done(Box::new(AiOutcome {
+                reference_egress,
                 exit,
                 risk,
                 geo,
