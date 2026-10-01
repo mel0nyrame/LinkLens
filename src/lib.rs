@@ -10,3 +10,7 @@ pub mod state_ai;
 pub mod state_leak;
 pub mod theme;
 pub mod ui;
+
+pub mod state_score;
+
+pub mod probe_score;

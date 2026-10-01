@@ -125,6 +125,7 @@ pub struct AppState {
     pub link: LinkState,
     /// Claude/GPT 检测页状态（详见 `state_ai`）。
     pub ai: AiState,
+    pub score: crate::state_score::ScoreState,
     /// DNS 泄漏页（形状见 `state_leak`）。
     pub dns_leak: DnsLeakState,
     /// WebRTC 泄漏页（形状见 `state_leak`）。
