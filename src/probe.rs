@@ -1,6 +1,6 @@
 //! 探测编排：后台 tokio 任务把 `net` 层探测结果写进共享状态。
 //!
-//! - `spawn_home`：应用启动即运行——国内双源出口 + Cloudflare 出口三张卡、
+//! - `spawn_home`：应用启动或首页重查时运行——国内双源出口 + Cloudflare 出口三张卡、
 //!   首页 6 目标连通小卡、分流出口探测与去重汇总；
 //! - `spawn_link`：首次进入连通页或重测时启动全部目标的分组连通测量。
 //!
@@ -21,7 +21,7 @@ use crate::net::latency::{LatencyProbe, RoundPlan, probe_rounds};
 use crate::net::split;
 use crate::net::targets::TARGETS;
 use crate::net::trace;
-use crate::state::{EgressCard, EgressPhase, LatencyState, SharedState, SplitSiteState};
+use crate::state::{EgressCard, EgressPhase, SharedState, SplitSiteState};
 
 /// 首页 6 目标连通小卡（名称、标注、URL；接口报告约定目标）。
 pub struct HomeLatencyTarget {
@@ -67,17 +67,18 @@ pub const HOME_LATENCY_TARGETS: [HomeLatencyTarget; 6] = [
 /// 分流探测并发上限（接口报告约定）。
 const SPLIT_CONCURRENCY: usize = 12;
 
-/// 启动首页探测任务（应用启动时调用一次）。
-pub fn spawn_home(shared: SharedState) {
+/// 开始新一轮首页探测，返回句柄供重查时取消。
+pub fn spawn_home(shared: SharedState) -> tokio::task::JoinHandle<()> {
+    let generation = shared.lock().home.begin_probe();
     tokio::spawn(async move {
         let client = http::client();
         let probe = LatencyProbe::new();
 
-        let egress_task = probe_home_egress(&client, shared.clone());
-        let latency_task = probe_home_latency(&probe, shared.clone());
-        let split_task = probe_home_split(&client, shared.clone());
+        let egress_task = probe_home_egress(&client, shared.clone(), generation);
+        let latency_task = probe_home_latency(&probe, shared.clone(), generation);
+        let split_task = probe_home_split(&client, shared.clone(), generation);
         let ((), (), ()) = tokio::join!(egress_task, latency_task, split_task);
-    });
+    })
 }
 
 /// 认领新测量；普通进入幂等，显式重测清空全部目标进度。
@@ -114,9 +115,14 @@ pub fn spawn_link(shared: SharedState, refresh: bool) -> Option<tokio::task::Joi
 }
 
 /// 首页出口三卡：国内双源（主/备）+ Cloudflare 出口。
-async fn probe_home_egress(client: &reqwest::Client, shared: SharedState) {
+async fn probe_home_egress(client: &reqwest::Client, shared: SharedState, generation: u64) {
     let cards = fetch_egress_cards(client).await;
-    shared.lock().home.egress = EgressPhase::Ready(cards);
+    let mut state = shared.lock();
+    let Some(home) = state.home.for_generation(generation) else {
+        return;
+    };
+    home.egress = EgressPhase::Ready(cards);
+    drop(state);
     shared.notify();
 }
 
@@ -249,16 +255,7 @@ fn assemble_card(
 }
 
 /// 首页 6 目标连通小卡：全目标并行，各自「预热 1 次 + 12 轮取中位数」。
-async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState) {
-    {
-        let mut state = shared.lock();
-        state.home.latency = HOME_LATENCY_TARGETS
-            .iter()
-            .map(|t| LatencyState::new(t.name))
-            .collect();
-    }
-    shared.notify();
-
+async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState, generation: u64) {
     stream::iter(HOME_LATENCY_TARGETS.iter().enumerate())
         .for_each_concurrent(HOME_LATENCY_TARGETS.len(), |(index, target)| {
             let probe = &probe;
@@ -266,13 +263,19 @@ async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState) {
             async move {
                 let on_round = |result| {
                     let mut state = shared.lock();
-                    state.home.latency[index].push_round(result);
+                    let Some(home) = state.home.for_generation(generation) else {
+                        return;
+                    };
+                    home.latency[index].push_round(result);
                     drop(state);
                     shared.notify();
                 };
                 probe_rounds(|| probe.measure_url(target.url), &RoundPlan::HOME, on_round).await;
                 let mut state = shared.lock();
-                state.home.latency[index].done = true;
+                let Some(home) = state.home.for_generation(generation) else {
+                    return;
+                };
+                home.latency[index].done = true;
                 drop(state);
                 shared.notify();
             }
@@ -281,16 +284,7 @@ async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState) {
 }
 
 /// 分流目标清单：并发 12 探测 → geoip-batch 补旗 → 出口去重汇总。
-async fn probe_home_split(client: &reqwest::Client, shared: SharedState) {
-    {
-        let mut state = shared.lock();
-        state.home.split = split::SITES
-            .iter()
-            .map(|_| SplitSiteState::default())
-            .collect();
-    }
-    shared.notify();
-
+async fn probe_home_split(client: &reqwest::Client, shared: SharedState, generation: u64) {
     stream::iter(split::SITES.iter().enumerate())
         .for_each_concurrent(SPLIT_CONCURRENCY, |(index, site)| {
             let client = &client;
@@ -298,20 +292,26 @@ async fn probe_home_split(client: &reqwest::Client, shared: SharedState) {
             async move {
                 let ip = split::probe_site(client, site).await;
                 let mut state = shared.lock();
-                state.home.split[index] = SplitSiteState { ip };
+                let Some(home) = state.home.for_generation(generation) else {
+                    return;
+                };
+                home.split[index] = SplitSiteState { ip };
                 drop(state);
                 shared.notify();
             }
         })
         .await;
 
-    build_split_summary(client, shared).await;
+    build_split_summary(client, shared, generation).await;
 }
 
 /// 汇总阶段：收集去重出口 → geoip-batch 补旗 → 写回共享状态。
-async fn build_split_summary(client: &reqwest::Client, shared: SharedState) {
+async fn build_split_summary(client: &reqwest::Client, shared: SharedState, generation: u64) {
     let records: Vec<(&'static str, String, String)> = {
         let state = shared.lock();
+        if state.home.generation != generation {
+            return;
+        }
         split::SITES
             .iter()
             .zip(state.home.split.iter())
@@ -355,8 +355,11 @@ async fn build_split_summary(client: &reqwest::Client, shared: SharedState) {
         .collect();
 
     let mut state = shared.lock();
-    state.home.split_summary = split::dedup_exits(&records);
-    state.home.split_done = true;
+    let Some(home) = state.home.for_generation(generation) else {
+        return;
+    };
+    home.split_summary = split::dedup_exits(&records);
+    home.split_done = true;
     drop(state);
     shared.notify();
 }
@@ -374,7 +377,8 @@ mod tests {
     async fn live_home_egress_smoke() {
         let shared = SharedState::new();
         let client = http::client();
-        probe_home_egress(&client, shared.clone()).await;
+        let generation = shared.lock().home.begin_probe();
+        probe_home_egress(&client, shared.clone(), generation).await;
         let state = shared.lock();
         let EgressPhase::Ready(cards) = &state.home.egress else {
             panic!("探测结束应进入 Ready");

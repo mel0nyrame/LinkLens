@@ -90,6 +90,8 @@ pub struct SplitSiteState {
 /// 首页状态。
 #[derive(Clone, Debug, Default)]
 pub struct HomeState {
+    /// 重查递增；后台任务只更新自己所属轮次。
+    pub generation: u64,
     pub egress: EgressPhase,
     /// 首页 6 目标（顺序与 `probe::HOME_LATENCY_TARGETS` 对齐）。
     pub latency: Vec<LatencyState>,
@@ -102,9 +104,60 @@ pub struct HomeState {
 }
 
 impl HomeState {
+    /// 清空出口、连通和分流进度，开始新一轮首页探测。
+    pub fn begin_probe(&mut self) -> u64 {
+        *self = Self {
+            generation: self.generation + 1,
+            latency: crate::probe::HOME_LATENCY_TARGETS
+                .iter()
+                .map(|t| LatencyState::new(t.name))
+                .collect(),
+            split: vec![SplitSiteState::default(); crate::net::split::SITES.len()],
+            ..Self::default()
+        };
+        self.generation
+    }
+
+    pub fn for_generation(&mut self, generation: u64) -> Option<&mut Self> {
+        (self.generation == generation).then_some(self)
+    }
+
     /// 已拿到出口 IP 的分流站数。
     pub fn split_resolved(&self) -> usize {
         self.split.iter().filter(|s| s.ip.is_some()).count()
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::{EgressPhase, HomeState};
+
+    #[test]
+    fn home_refresh_resets_progress_and_rejects_late_results() {
+        let mut home = HomeState::default();
+        let first = home.begin_probe();
+        let current = home.for_generation(first).unwrap();
+        current.egress = EgressPhase::Ready(Vec::new());
+        current.latency[0].push_round(Some(42));
+        current.latency[0].done = true;
+        current.split[0].ip = Some("1.1.1.1".into());
+        current.split_summary.push(crate::net::split::SplitExit {
+            ip: "1.1.1.1".into(),
+            country_code: "US".into(),
+            sites: vec!["网易"],
+        });
+        current.split_done = true;
+        let second = home.begin_probe();
+        assert!(matches!(home.egress, EgressPhase::Pending));
+        assert!(home.latency.iter().all(|s| s.rounds.is_empty() && !s.done));
+        assert!(home.split.iter().all(|s| s.ip.is_none()));
+        assert!(!home.split_done);
+        assert!(home.split_summary.is_empty());
+        assert!(home.for_generation(first).is_none());
+        home.for_generation(second).unwrap().latency[0].push_round(Some(7));
+        let third = home.begin_probe();
+        assert!(home.for_generation(second).is_none());
+        assert!(home.for_generation(third).is_some());
     }
 }
 

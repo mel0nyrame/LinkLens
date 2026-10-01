@@ -1,7 +1,7 @@
 //! 应用状态与输入导航：页面切换、隐藏 IP 开关、重查、滚动与退出。
 //!
 //! 键位约定：`1`-`7` 直达页面，`←`/`→`（或 `h`/`l`、`Tab`/`Shift+Tab`）顺序循环，
-//! `i` 切换隐藏 IP 打码，`r` 在 Claude/GPT 和网络连通页重查，`q`/`Esc`/`Ctrl+C` 退出。
+//! `i` 切换隐藏 IP 打码，`r` 在首页、Claude/GPT 和网络连通页重查，`q`/`Esc`/`Ctrl+C` 退出。
 //! 评分页输入焦点先行消费按键，再回落到此层。
 //! 隐藏 IP 是全局开关：影响所有页面的 IP 显示。
 
@@ -91,7 +91,7 @@ pub struct App {
     pub page: Page,
     /// 隐藏 IP 开关：开启后界面所有 IP 打码显示（方便截图分享）。
     pub hide_ip: bool,
-    /// `r` 键置位的重查请求（Claude/GPT 与网络连通页），事件循环消费后复位。
+    /// `r` 键置位的重查请求（首页、Claude/GPT 与网络连通页），事件循环消费后复位。
     pub refresh_requested: bool,
     pub should_quit: bool,
     /// 各页独立保存垂直位置；评分页由其输入与查询状态持有滚动位置。
@@ -130,7 +130,10 @@ impl App {
             }
             KeyCode::Char('i') => self.hide_ip = !self.hide_ip,
             KeyCode::Char('r')
-                if matches!(self.page, Page::Claude | Page::Gpt | Page::Connectivity) =>
+                if matches!(
+                    self.page,
+                    Page::IpQuery | Page::Claude | Page::Gpt | Page::Connectivity
+                ) =>
             {
                 self.refresh_requested = true;
             }
@@ -166,7 +169,7 @@ pub async fn run() -> std::io::Result<()> {
     }
     let mut events = EventStream::new();
     let shared = state::SharedState::new();
-    probe::spawn_home(shared.clone());
+    let mut home_task = probe::spawn_home(shared.clone());
     let mut link_task = None;
     let mut webrtc_spawned = false;
 
@@ -192,7 +195,7 @@ pub async fn run() -> std::io::Result<()> {
         probe_ai::spawn_for_page_if_needed(shared.clone());
         probe_score::spawn_for_page_if_needed(shared.clone());
 
-        // `r` 键重查当前 AI 或连通页
+        // `r` 键重查当前首页、AI 或连通页
         let refresh_page = {
             let mut snapshot = shared.lock();
             let page = snapshot.app.page;
@@ -204,7 +207,10 @@ pub async fn run() -> std::io::Result<()> {
             }
         };
         if let Some(page) = refresh_page {
-            if page == Page::Connectivity {
+            if page == Page::IpQuery {
+                home_task.abort();
+                home_task = probe::spawn_home(shared.clone());
+            } else if page == Page::Connectivity {
                 if let Some(task) = link_task.take() {
                     task.abort();
                 }
@@ -288,6 +294,13 @@ pub async fn run() -> std::io::Result<()> {
 mod tests {
     use super::{App, Page};
     use crossterm::event::{KeyCode, KeyModifiers};
+
+    #[test]
+    fn regression_home_r_requests_a_new_probe() {
+        let mut app = App::default();
+        app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(app.refresh_requested, "IP 查询页 r 必须提交重查请求");
+    }
 
     #[test]
     fn regression_connectivity_r_requests_a_new_probe() {
@@ -403,8 +416,8 @@ mod tests {
     }
 
     #[test]
-    fn r_key_requests_refresh_on_ai_and_connectivity_pages() {
-        for page in [Page::Claude, Page::Gpt] {
+    fn r_key_requests_refresh_on_supported_pages() {
+        for page in [Page::IpQuery, Page::Claude, Page::Gpt, Page::Connectivity] {
             let mut app = App {
                 page,
                 ..App::default()
@@ -412,11 +425,13 @@ mod tests {
             app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
             assert!(app.refresh_requested, "{page:?} 页 r 应请求重查");
         }
-        // 首页不请求重查，也不影响其他行为。
-        let mut app = App::default();
+        let mut app = App {
+            page: Page::DnsLeak,
+            ..App::default()
+        };
         app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
-        assert!(!app.refresh_requested, "首页 r 不置位");
+        assert!(!app.refresh_requested);
         assert!(!app.should_quit);
-        assert_eq!(app.page, Page::IpQuery);
+        assert_eq!(app.page, Page::DnsLeak);
     }
 }
