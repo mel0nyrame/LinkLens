@@ -35,7 +35,10 @@ fn valid_ipv4(run: &str) -> Option<String> {
         return None;
     }
     let ok = octets.iter().all(|o| {
-        !o.is_empty() && o.len() <= 3 && o.chars().all(|c| c.is_ascii_digit()) && o.parse::<u16>().map(|v| v <= 255).unwrap_or(false)
+        !o.is_empty()
+            && o.len() <= 3
+            && o.chars().all(|c| c.is_ascii_digit())
+            && o.parse::<u16>().map(|v| v <= 255).unwrap_or(false)
     });
     ok.then(|| run.to_string())
 }
@@ -59,19 +62,35 @@ fn after_label(text: &str, label: &str, terminators: &[char]) -> String {
     let Some((_, rest)) = text.split_once(label) else {
         return String::new();
     };
-    let end = rest.find(|c: char| terminators.contains(&c)).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| terminators.contains(&c))
+        .unwrap_or(rest.len());
     rest[..end].trim().to_string()
 }
 
 /// 请求 ip138 页面并解析；失败为 `None`。
 pub async fn fetch_ip138(client: &reqwest::Client) -> Option<CnSource> {
-    let html = client.get("https://2026.ip138.com/").send().await.ok()?.text().await.ok()?;
+    let html = client
+        .get("https://2026.ip138.com/")
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
     parse_ip138(&html)
 }
 
 /// 请求 my.ip.cn 文本并解析；失败为 `None`。
 pub async fn fetch_my_ip_cn(client: &reqwest::Client) -> Option<CnSource> {
-    let text = client.get("https://my.ip.cn/").send().await.ok()?.text().await.ok()?;
+    let text = client
+        .get("https://my.ip.cn/")
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
     parse_my_ip_cn(&text)
 }
 

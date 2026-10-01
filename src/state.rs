@@ -52,7 +52,12 @@ pub struct LatencyState {
 impl LatencyState {
     /// 以目标名初始化（零轮、未完成）。
     pub fn new(name: &'static str) -> LatencyState {
-        LatencyState { name, rounds: Vec::new(), median: None, done: false }
+        LatencyState {
+            name,
+            rounds: Vec::new(),
+            median: None,
+            done: false,
+        }
     }
 
     /// 追加一轮结果并重算中位数（成功轮参与，失败轮只记档）。
@@ -128,7 +133,10 @@ pub struct SharedState {
 impl SharedState {
     /// 初始化为默认状态。
     pub fn new() -> SharedState {
-        SharedState { state: Arc::new(Mutex::new(AppState::default())), notify: Arc::new(Notify::new()) }
+        SharedState {
+            state: Arc::new(Mutex::new(AppState::default())),
+            notify: Arc::new(Notify::new()),
+        }
     }
 
     /// 短暂加锁读取/修改状态（调用方不得在持有锁期间 await）。

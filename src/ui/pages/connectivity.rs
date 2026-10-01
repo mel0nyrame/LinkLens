@@ -70,7 +70,11 @@ pub fn render(f: &mut Frame, area: Rect, link: &LinkState) {
     };
 
     for (group_index, group) in GROUPS.iter().enumerate() {
-        let rect = if group_index < 2 { top_rects[group_index] } else { bottom_rects[group_index - 2] };
+        let rect = if group_index < 2 {
+            top_rects[group_index]
+        } else {
+            bottom_rects[group_index - 2]
+        };
         render_group(f, rect, group_index, group.flag, group.name, link);
     }
 }
@@ -94,7 +98,10 @@ fn render_group(
     let (reachable, avg) = group_summary(&targets);
     let title = icon::labeled(
         Icon::Earth,
-        &format!("{flag} {name} · 可达 {reachable}/{} · 平均 {avg}", targets.len()),
+        &format!(
+            "{flag} {name} · 可达 {reachable}/{} · 平均 {avg}",
+            targets.len()
+        ),
     );
     let block = card(title);
     let inner = block.inner(area);
@@ -145,7 +152,10 @@ fn round_dots(target_state: &LatencyState) -> Vec<Span<'static>> {
     let total = RoundPlan::LINK.rounds as usize;
     (0..total)
         .map(|i| match target_state.rounds.get(i) {
-            Some(result) => Span::styled("●", Style::new().fg(super::latency_color(round_tier(*result)))),
+            Some(result) => Span::styled(
+                "●",
+                Style::new().fg(super::latency_color(round_tier(*result))),
+            ),
             None => Span::styled("·", Style::new().fg(THEME_MUTED)),
         })
         .collect()

@@ -169,7 +169,9 @@ fn matches_prefix(prefixes: &[&str], text: &str) -> bool {
 /// 3. 全部不通过：以标准中文国名 + geoip 的 region/city/isp 重拼，
 ///    来源标记「GeoIP（地区库纠正）」（region 与 city 相同时只保留其一）。
 pub fn validate_geo(geoip: Option<&GeoIp>, candidates: &[GeoCandidate]) -> ResolvedGeo {
-    let cc = geoip.map(|g| g.country_code.to_lowercase()).unwrap_or_default();
+    let cc = geoip
+        .map(|g| g.country_code.to_lowercase())
+        .unwrap_or_default();
 
     if cc.is_empty() {
         let longest = candidates
@@ -177,18 +179,32 @@ pub fn validate_geo(geoip: Option<&GeoIp>, candidates: &[GeoCandidate]) -> Resol
             .filter(|c| !c.geo.is_empty())
             .max_by_key(|c| c.geo.chars().count());
         return match longest {
-            Some(c) => ResolvedGeo { geo: c.geo.clone(), source: c.source.to_string() },
+            Some(c) => ResolvedGeo {
+                geo: c.geo.clone(),
+                source: c.source.to_string(),
+            },
             None => candidates
                 .first()
-                .map(|c| ResolvedGeo { geo: c.geo.clone(), source: c.source.to_string() })
-                .unwrap_or(ResolvedGeo { geo: String::new(), source: String::new() }),
+                .map(|c| ResolvedGeo {
+                    geo: c.geo.clone(),
+                    source: c.source.to_string(),
+                })
+                .unwrap_or(ResolvedGeo {
+                    geo: String::new(),
+                    source: String::new(),
+                }),
         };
     }
 
     if let Some(prefixes) = cn_prefixes(&cc) {
-        let valid = candidates.iter().filter(|c| !c.geo.is_empty() && matches_prefix(prefixes, &c.geo));
+        let valid = candidates
+            .iter()
+            .filter(|c| !c.geo.is_empty() && matches_prefix(prefixes, &c.geo));
         if let Some(longest) = valid.max_by_key(|c| c.geo.chars().count()) {
-            return ResolvedGeo { geo: longest.geo.clone(), source: longest.source.to_string() };
+            return ResolvedGeo {
+                geo: longest.geo.clone(),
+                source: longest.source.to_string(),
+            };
         }
     }
 
@@ -198,7 +214,10 @@ pub fn validate_geo(geoip: Option<&GeoIp>, candidates: &[GeoCandidate]) -> Resol
 /// 用标准中文国名 + geoip 的 region/city/isp 重拼中文归属地。
 fn rebuild_from_geoip(_cc: &str, geoip: Option<&GeoIp>) -> ResolvedGeo {
     let geo = geoip.expect("重拼分支只在国别码非空时进入，必有 geoip");
-    ResolvedGeo { geo: chinese_location(geo), source: CORRECTED_SOURCE.to_string() }
+    ResolvedGeo {
+        geo: chinese_location(geo),
+        source: CORRECTED_SOURCE.to_string(),
+    }
 }
 
 /// 仅凭 geoip 拼中文归属地：中文国名（表外用英文国名兜底）+ region/city/isp。
@@ -221,15 +240,24 @@ pub fn chinese_location(geoip: &GeoIp) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CC_TO_CN_NAME, CC_TO_CN_PREFIX, GeoCandidate, ResolvedGeo, chinese_location, cn_name, cn_prefixes, matches_prefix, validate_geo};
+    use super::{
+        CC_TO_CN_NAME, CC_TO_CN_PREFIX, GeoCandidate, ResolvedGeo, chinese_location, cn_name,
+        cn_prefixes, matches_prefix, validate_geo,
+    };
     use crate::net::geoip::GeoIp;
 
     fn candidate(geo: &str, source: &'static str) -> GeoCandidate {
-        GeoCandidate { geo: geo.to_string(), source }
+        GeoCandidate {
+            geo: geo.to_string(),
+            source,
+        }
     }
 
     fn geoip(cc: &str) -> GeoIp {
-        GeoIp { country_code: cc.into(), ..GeoIp::default() }
+        GeoIp {
+            country_code: cc.into(),
+            ..GeoIp::default()
+        }
     }
 
     #[test]
@@ -263,10 +291,7 @@ mod tests {
 
     #[test]
     fn matching_candidate_keeps_domestic_source() {
-        let resolved = validate_geo(
-            Some(&geoip("jp")),
-            &[candidate("日本 东京", "iP138.com")],
-        );
+        let resolved = validate_geo(Some(&geoip("jp")), &[candidate("日本 东京", "iP138.com")]);
         assert_eq!(resolved.geo, "日本 东京");
         assert_eq!(resolved.source, "iP138.com");
     }
@@ -304,7 +329,11 @@ mod tests {
     #[test]
     fn unknown_country_code_falls_back_to_geoip_country() {
         let resolved = validate_geo(
-            Some(&GeoIp { country: "Freedonia".into(), country_code: "zz".into(), ..GeoIp::default() }),
+            Some(&GeoIp {
+                country: "Freedonia".into(),
+                country_code: "zz".into(),
+                ..GeoIp::default()
+            }),
             &[candidate("中国 上海", "iP138.com")],
         );
         assert_eq!(resolved.geo, "Freedonia");
@@ -343,7 +372,10 @@ mod tests {
         assert_eq!(resolved.geo, "日本");
         assert_eq!(
             resolved,
-            ResolvedGeo { geo: "日本".into(), source: "GeoIP（地区库纠正）".into() }
+            ResolvedGeo {
+                geo: "日本".into(),
+                source: "GeoIP（地区库纠正）".into()
+            }
         );
     }
 
@@ -361,7 +393,11 @@ mod tests {
 
     #[test]
     fn chinese_location_outside_table_falls_back_to_country() {
-        let geo = GeoIp { country: "Freedonia".into(), country_code: "zz".into(), ..GeoIp::default() };
+        let geo = GeoIp {
+            country: "Freedonia".into(),
+            country_code: "zz".into(),
+            ..GeoIp::default()
+        };
         assert_eq!(chinese_location(&geo), "Freedonia");
     }
 

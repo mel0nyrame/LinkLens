@@ -130,7 +130,10 @@ where
         if round + 1 < plan.rounds {
             let gap = plan.min_interval.as_millis() as u64 + jitter_ms(round, plan.max_jitter);
             let elapsed = started.elapsed().as_millis() as u64;
-            tokio::time::sleep(std::time::Duration::from_millis(gap.saturating_sub(elapsed))).await;
+            tokio::time::sleep(std::time::Duration::from_millis(
+                gap.saturating_sub(elapsed),
+            ))
+            .await;
         }
     }
     results
@@ -150,7 +153,9 @@ impl LatencyProbe {
         let config = rustls::ClientConfig::builder()
             .with_root_certificates(roots)
             .with_no_client_auth();
-        LatencyProbe { connector: Arc::new(tokio_rustls::TlsConnector::from(Arc::new(config))) }
+        LatencyProbe {
+            connector: Arc::new(tokio_rustls::TlsConnector::from(Arc::new(config))),
+        }
     }
 
     /// 对目标 URL 做一次「连接 + TLS 握手」计时；DNS 解析时间不计入。
@@ -175,7 +180,10 @@ impl LatencyProbe {
                 let tcp = tokio::net::TcpStream::connect(addr).await.ok()?;
                 tcp.set_nodelay(true).ok();
                 // 握手完成即计时结束；连接随后直接丢弃，不等任何应用层响应
-                self.connector.connect(server_name.clone(), tcp).await.ok()?;
+                self.connector
+                    .connect(server_name.clone(), tcp)
+                    .await
+                    .ok()?;
                 Some(())
             };
             if tokio::time::timeout(PUBLIC_TIMEOUT, attempt)
@@ -202,7 +210,10 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
 
-    use super::{LatencyTier, RoundPlan, TIMEOUT_LABEL, jitter_ms, median, parse_host_port, probe_rounds, tier};
+    use super::{
+        LatencyTier, RoundPlan, TIMEOUT_LABEL, jitter_ms, median, parse_host_port, probe_rounds,
+        tier,
+    };
 
     #[tokio::test]
     async fn warmup_is_excluded_and_rounds_are_reported_in_order() {
@@ -288,9 +299,18 @@ mod tests {
     fn home_and_link_plans_match_ticket_specs() {
         assert_eq!(RoundPlan::HOME.warmup, 1);
         assert_eq!(RoundPlan::HOME.rounds, 12);
-        assert_eq!(RoundPlan::HOME.min_interval, std::time::Duration::from_millis(80));
-        assert_eq!(RoundPlan::LINK.min_interval, std::time::Duration::from_millis(90));
-        assert_eq!(RoundPlan::LINK.max_jitter, std::time::Duration::from_millis(140));
+        assert_eq!(
+            RoundPlan::HOME.min_interval,
+            std::time::Duration::from_millis(80)
+        );
+        assert_eq!(
+            RoundPlan::LINK.min_interval,
+            std::time::Duration::from_millis(90)
+        );
+        assert_eq!(
+            RoundPlan::LINK.max_jitter,
+            std::time::Duration::from_millis(140)
+        );
     }
 
     #[test]
@@ -339,12 +359,18 @@ mod tests {
 
     #[test]
     fn parses_https_urls() {
-        assert_eq!(parse_host_port("https://1.1.1.1/cdn-cgi/trace"), Some(("1.1.1.1".into(), 443)));
+        assert_eq!(
+            parse_host_port("https://1.1.1.1/cdn-cgi/trace"),
+            Some(("1.1.1.1".into(), 443))
+        );
         assert_eq!(
             parse_host_port("https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico"),
             Some(("res.wx.qq.com".into(), 443))
         );
-        assert_eq!(parse_host_port("https://example.com:8443/x"), Some(("example.com".into(), 8443)));
+        assert_eq!(
+            parse_host_port("https://example.com:8443/x"),
+            Some(("example.com".into(), 8443))
+        );
     }
 
     #[test]
@@ -365,6 +391,9 @@ mod tests {
             Some(ms) => Some(ms),
             None => probe.measure_url("https://1.1.1.1/cdn-cgi/trace").await,
         };
-        assert!(ms.is_some_and(|v| v > 0 && v <= 8_000), "实测延迟异常：{ms:?}");
+        assert!(
+            ms.is_some_and(|v| v > 0 && v <= 8_000),
+            "实测延迟异常：{ms:?}"
+        );
     }
 }

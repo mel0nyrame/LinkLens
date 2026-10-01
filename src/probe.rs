@@ -9,8 +9,8 @@
 //! - 连通计时预热 1 次 + 12 轮取中位数（`net::latency::RoundPlan`）；
 //! - 分流并发 12、失败重试 2 次（`net::split::probe_site` 内置 2s/4s）。
 
-use futures_util::stream;
 use futures_util::StreamExt;
+use futures_util::stream;
 
 use crate::net::cc::{GeoCandidate, validate_geo};
 use crate::net::cn_source;
@@ -32,12 +32,36 @@ pub struct HomeLatencyTarget {
 
 /// 首页 6 目标：国内外各半，顺序即小卡顺序。
 pub const HOME_LATENCY_TARGETS: [HomeLatencyTarget; 6] = [
-    HomeLatencyTarget { name: "字节跳动", tag: "国内", url: "https://perfops.byte-test.com/500b-bench.jpg" },
-    HomeLatencyTarget { name: "淘宝", tag: "国内", url: "https://www.taobao.com/favicon.ico" },
-    HomeLatencyTarget { name: "微信", tag: "国内", url: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico" },
-    HomeLatencyTarget { name: "GitHub", tag: "国际", url: "https://github.com/generate_204" },
-    HomeLatencyTarget { name: "Cloudflare", tag: "国际", url: "https://1.1.1.1/cdn-cgi/trace" },
-    HomeLatencyTarget { name: "YouTube", tag: "国际", url: "https://www.youtube.com/generate_204" },
+    HomeLatencyTarget {
+        name: "字节跳动",
+        tag: "国内",
+        url: "https://perfops.byte-test.com/500b-bench.jpg",
+    },
+    HomeLatencyTarget {
+        name: "淘宝",
+        tag: "国内",
+        url: "https://www.taobao.com/favicon.ico",
+    },
+    HomeLatencyTarget {
+        name: "微信",
+        tag: "国内",
+        url: "https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico",
+    },
+    HomeLatencyTarget {
+        name: "GitHub",
+        tag: "国际",
+        url: "https://github.com/generate_204",
+    },
+    HomeLatencyTarget {
+        name: "Cloudflare",
+        tag: "国际",
+        url: "https://1.1.1.1/cdn-cgi/trace",
+    },
+    HomeLatencyTarget {
+        name: "YouTube",
+        tag: "国际",
+        url: "https://www.youtube.com/generate_204",
+    },
 ];
 
 /// 分流探测并发上限（接口报告约定）。
@@ -118,8 +142,14 @@ async fn probe_home_egress(client: &reqwest::Client, shared: SharedState) {
         (Some(a), Some(b)) => {
             // 双源同 IP：单卡，来源并列标注，归属地择优校验
             let candidates = vec![
-                GeoCandidate { geo: a.location.clone(), source: "iP138.com" },
-                GeoCandidate { geo: b.location.clone(), source: "IP.cn" },
+                GeoCandidate {
+                    geo: a.location.clone(),
+                    source: "iP138.com",
+                },
+                GeoCandidate {
+                    geo: b.location.clone(),
+                    source: "IP.cn",
+                },
             ];
             let geoip_data = geoip::fetch_geoip(client, &a.ip).await;
             let resolved = validate_geo(geoip_data.as_ref(), &candidates);
@@ -128,13 +158,8 @@ async fn probe_home_egress(client: &reqwest::Client, shared: SharedState) {
             } else {
                 "iP138.com / IP.cn".to_string()
             };
-            let mut card = assemble_card(
-                "主出口",
-                &a.ip,
-                &resolved.geo,
-                &source,
-                geoip_data.as_ref(),
-            );
+            let mut card =
+                assemble_card("主出口", &a.ip, &resolved.geo, &source, geoip_data.as_ref());
             card.badges = fetch_badges(client, &a.ip).await;
             cards.push(card);
         }
@@ -154,8 +179,17 @@ async fn probe_home_egress(client: &reqwest::Client, shared: SharedState) {
     // Cloudflare 出口卡（无国内源文本，归属地直接由 geoip 拼中文）
     if let Some(ip) = rcf.and_then(|trace_data| trace_data.ip) {
         let geoip_data = geoip::fetch_geoip(client, &ip).await;
-        let geo = geoip_data.as_ref().map(crate::net::cc::chinese_location).unwrap_or_default();
-        let mut card = assemble_card("Cloudflare 出口", &ip, &geo, "Cloudflare trace", geoip_data.as_ref());
+        let geo = geoip_data
+            .as_ref()
+            .map(crate::net::cc::chinese_location)
+            .unwrap_or_default();
+        let mut card = assemble_card(
+            "Cloudflare 出口",
+            &ip,
+            &geo,
+            "Cloudflare trace",
+            geoip_data.as_ref(),
+        );
         card.badges = fetch_badges(client, &ip).await;
         cards.push(card);
     }
@@ -175,7 +209,10 @@ async fn build_cn_card(
     source_label: &'static str,
 ) -> Option<EgressCard> {
     let geoip_data = geoip::fetch_geoip(client, &source.ip).await;
-    let candidates = vec![GeoCandidate { geo: source.location.clone(), source: source_label }];
+    let candidates = vec![GeoCandidate {
+        geo: source.location.clone(),
+        source: source_label,
+    }];
     let resolved = validate_geo(geoip_data.as_ref(), &candidates);
     let mut card = assemble_card(
         label,
@@ -220,8 +257,10 @@ fn assemble_card(
 async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState) {
     {
         let mut state = shared.lock();
-        state.home.latency =
-            HOME_LATENCY_TARGETS.iter().map(|t| LatencyState::new(t.name)).collect();
+        state.home.latency = HOME_LATENCY_TARGETS
+            .iter()
+            .map(|t| LatencyState::new(t.name))
+            .collect();
     }
     shared.notify();
 
@@ -250,7 +289,10 @@ async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState) {
 async fn probe_home_split(client: &reqwest::Client, shared: SharedState) {
     {
         let mut state = shared.lock();
-        state.home.split = split::SITES.iter().map(|_| SplitSiteState::default()).collect();
+        state.home.split = split::SITES
+            .iter()
+            .map(|_| SplitSiteState::default())
+            .collect();
     }
     shared.notify();
 
@@ -357,7 +399,8 @@ mod tests {
         assert_eq!(site.name, "网易");
         let ip = split::probe_site(&client, &site).await;
         assert!(
-            ip.as_ref().is_some_and(|v| crate::net::split::is_valid_ip(v)),
+            ip.as_ref()
+                .is_some_and(|v| crate::net::split::is_valid_ip(v)),
             "网易应给出合法出口 IP：{ip:?}"
         );
     }

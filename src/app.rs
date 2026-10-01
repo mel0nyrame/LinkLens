@@ -8,9 +8,9 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use futures_util::StreamExt;
 use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
 
-use crate::{probe, state};
 use crate::theme::icon::Icon;
 use crate::ui;
+use crate::{probe, state};
 
 /// 七个功能页，顺序即导航顺序，也是数字键 `1`-`7` 的直达目标。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]

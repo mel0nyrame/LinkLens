@@ -31,11 +31,16 @@ pub struct GeoIp {
 impl GeoIp {
     /// 中文界面外的原始归属地拼串：`[country, region, city, isp]` 去空后以空格相连。
     pub fn geo_string(&self) -> String {
-        [self.country.as_str(), self.region.as_str(), self.city.as_str(), self.isp.as_str()]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
+        [
+            self.country.as_str(),
+            self.region.as_str(),
+            self.city.as_str(),
+            self.isp.as_str(),
+        ]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
     }
 }
 
@@ -95,7 +100,8 @@ mod tests {
 
     #[test]
     fn batch_sample_deserializes() {
-        let map: HashMap<String, GeoIp> = serde_json::from_str(BATCH_JSON).expect("样例应可反序列化");
+        let map: HashMap<String, GeoIp> =
+            serde_json::from_str(BATCH_JSON).expect("样例应可反序列化");
         assert_eq!(map.len(), 3);
         let cloudflare = &map["1.1.1.1"];
         assert_eq!(cloudflare.country_code, "au");
@@ -104,8 +110,9 @@ mod tests {
 
     #[test]
     fn missing_fields_default_to_empty() {
-        let geo: GeoIp = serde_json::from_str(r#"{"country": "United States", "country_code": "us"}"#)
-            .expect("缺字段应容忍");
+        let geo: GeoIp =
+            serde_json::from_str(r#"{"country": "United States", "country_code": "us"}"#)
+                .expect("缺字段应容忍");
         assert_eq!(geo.region, "");
         assert_eq!(geo.isp, "");
     }

@@ -52,7 +52,9 @@ pub fn compact_ipv6(ip: &str) -> String {
 fn is_ipv4(text: &str) -> bool {
     let octets: Vec<&str> = text.split('.').collect();
     octets.len() == 4
-        && octets.iter().all(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_digit()))
+        && octets
+            .iter()
+            .all(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_digit()))
 }
 
 #[cfg(test)]

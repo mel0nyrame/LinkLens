@@ -83,7 +83,12 @@ fn render_latency_grid(f: &mut Frame, area: Rect, home: &HomeState) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let slots = card_rects(inner, home.latency.len().max(crate::probe::HOME_LATENCY_TARGETS.len()));
+    let slots = card_rects(
+        inner,
+        home.latency
+            .len()
+            .max(crate::probe::HOME_LATENCY_TARGETS.len()),
+    );
     for (rect, target_state) in slots.into_iter().zip(home.latency.iter()) {
         render_latency_slot(f, rect, target_state);
     }
@@ -105,16 +110,13 @@ fn render_latency_slot(f: &mut Frame, area: Rect, target_state: &LatencyState) {
 
 /// 12 轮色点：已测轮按当轮分档取色，未测轮暗灰小点。
 fn round_dots(target_state: &LatencyState) -> Line<'static> {
-    use crate::net::latency::tier as round_tier;
     use crate::net::latency::RoundPlan;
+    use crate::net::latency::tier as round_tier;
 
     let total = RoundPlan::HOME.rounds as usize;
     let spans = (0..total)
         .map(|i| match target_state.rounds.get(i) {
-            Some(result) => Span::styled(
-                "●",
-                Style::new().fg(latency_color(round_tier(*result))),
-            ),
+            Some(result) => Span::styled("●", Style::new().fg(latency_color(round_tier(*result)))),
             None => Span::styled("·", Style::new().fg(THEME_MUTED)),
         })
         .collect::<Vec<_>>();
@@ -124,11 +126,18 @@ fn round_dots(target_state: &LatencyState) -> Line<'static> {
 /// 分流出口汇总卡。
 fn render_split(f: &mut Frame, area: Rect, home: &HomeState, hide_ip: bool) {
     let title = if home.split_done {
-        icon::labeled(Icon::Web, &format!("分流出口汇总（{} 站）", home.split.len()))
+        icon::labeled(
+            Icon::Web,
+            &format!("分流出口汇总（{} 站）", home.split.len()),
+        )
     } else {
         icon::labeled(
             Icon::Web,
-            &format!("分流出口探测中 {}/{} 站", home.split_resolved(), home.split.len()),
+            &format!(
+                "分流出口探测中 {}/{} 站",
+                home.split_resolved(),
+                home.split.len()
+            ),
         )
     };
     let block = card(title);
@@ -168,7 +177,10 @@ fn render_split(f: &mut Frame, area: Rect, home: &HomeState, hide_ip: bool) {
         ));
     }
     if lines.is_empty() {
-        lines.push(Line::styled("准备中…".to_string(), Style::new().fg(THEME_MUTED)));
+        lines.push(Line::styled(
+            "准备中…".to_string(),
+            Style::new().fg(THEME_MUTED),
+        ));
     }
     f.render_widget(Paragraph::new(lines), inner);
 }

@@ -88,37 +88,59 @@ mod tests {
 
     #[test]
     fn datacenter_gets_machine_room_badge() {
-        let risk = Iprisk { is_datacenter: Some(true), company_type: "hosting".into(), ..Iprisk::default() };
+        let risk = Iprisk {
+            is_datacenter: Some(true),
+            company_type: "hosting".into(),
+            ..Iprisk::default()
+        };
         assert_eq!(risk.property_badge(), Some("机房IP"));
     }
 
     #[test]
     fn residential_gets_home_broadband_badge() {
-        let risk = Iprisk { is_residential: Some(true), company_type: "isp".into(), ..Iprisk::default() };
+        let risk = Iprisk {
+            is_residential: Some(true),
+            company_type: "isp".into(),
+            ..Iprisk::default()
+        };
         assert_eq!(risk.property_badge(), Some("家庭宽带"));
     }
 
     #[test]
     fn datacenter_business_gets_dedicated_line_badge() {
-        let risk = Iprisk { is_datacenter: Some(true), company_type: "business".into(), ..Iprisk::default() };
+        let risk = Iprisk {
+            is_datacenter: Some(true),
+            company_type: "business".into(),
+            ..Iprisk::default()
+        };
         assert_eq!(risk.property_badge(), Some("商业专线"));
     }
 
     #[test]
     fn residential_business_gets_business_broadband_badge() {
-        let risk = Iprisk { is_residential: Some(true), company_type: "business".into(), ..Iprisk::default() };
+        let risk = Iprisk {
+            is_residential: Some(true),
+            company_type: "business".into(),
+            ..Iprisk::default()
+        };
         assert_eq!(risk.property_badge(), Some("商业宽带"));
     }
 
     #[test]
     fn education_type_gets_education_badge() {
-        let risk = Iprisk { company_type: "education".into(), ..Iprisk::default() };
+        let risk = Iprisk {
+            company_type: "education".into(),
+            ..Iprisk::default()
+        };
         assert_eq!(risk.property_badge(), Some("教育"));
     }
 
     #[test]
     fn unknown_combination_yields_no_badge() {
-        let risk = Iprisk { company_type: "hosting".into(), ..Iprisk::default() };
+        let risk = Iprisk {
+            company_type: "hosting".into(),
+            ..Iprisk::default()
+        };
         assert_eq!(risk.property_badge(), None);
         let empty = Iprisk::default();
         assert_eq!(empty.property_badge(), None);

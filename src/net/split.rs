@@ -43,56 +43,258 @@ pub struct SplitSite {
 
 /// 分流站点清单（活站 `home-page.js` 的 `tests` 表，2026-10-01 抓取）。
 pub const SITES: &[SplitSite] = &[
-    SplitSite { name: "网易", kind: SiteKind::Domestic, method: SplitMethod::Netease },
+    SplitSite {
+        name: "网易",
+        kind: SiteKind::Domestic,
+        method: SplitMethod::Netease,
+    },
     SplitSite {
         name: "字节跳动",
         kind: SiteKind::Domestic,
-        method: SplitMethod::Bytedance { url: "https://perfops.byte-test.com/500b-bench.jpg" },
+        method: SplitMethod::Bytedance {
+            url: "https://perfops.byte-test.com/500b-bench.jpg",
+        },
     },
     SplitSite {
         name: "Cloudflare中国",
         kind: SiteKind::Domestic,
-        method: SplitMethod::Cftrace { domain: "www.cloudflare-cn.com" },
+        method: SplitMethod::Cftrace {
+            domain: "www.cloudflare-cn.com",
+        },
     },
     SplitSite {
         name: "高通中国",
         kind: SiteKind::Domestic,
-        method: SplitMethod::Cftrace { domain: "www.qualcomm.cn" },
+        method: SplitMethod::Cftrace {
+            domain: "www.qualcomm.cn",
+        },
     },
-    SplitSite { name: "discord.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "gateway.discord.gg" } },
-    SplitSite { name: "x.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "x.com" } },
-    SplitSite { name: "medium.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "medium.com" } },
-    SplitSite { name: "signal.org", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "signal.org" } },
-    SplitSite { name: "anthropic.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "anthropic.com" } },
-    SplitSite { name: "claude.ai", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "claude.ai" } },
-    SplitSite { name: "chatgpt.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "chatgpt.com" } },
-    SplitSite { name: "openai.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "openai.com" } },
-    SplitSite { name: "sora.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "sora.com" } },
-    SplitSite { name: "grok.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "grok.com" } },
-    SplitSite { name: "pixpix.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "pixpix.com" } },
-    SplitSite { name: "perplexity.ai", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "www.perplexity.ai" } },
-    SplitSite { name: "midjourney.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "midjourney.com" } },
-    SplitSite { name: "mistral.ai", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "mistral.ai" } },
-    SplitSite { name: "coinbase.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "coinbase.com" } },
-    SplitSite { name: "www.okx.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "www.okx.com" } },
-    SplitSite { name: "binance.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "www.binance.info" } },
-    SplitSite { name: "crypto.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "crypto.com" } },
-    SplitSite { name: "zoom.us", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "zoom.us" } },
-    SplitSite { name: "1password.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "1password.com" } },
-    SplitSite { name: "wise.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "wise.com" } },
-    SplitSite { name: "poe.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "poe.com" } },
-    SplitSite { name: "notion.so", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "notion.so" } },
-    SplitSite { name: "shopify.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "shopify.com" } },
-    SplitSite { name: "godaddy.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "godaddy.com" } },
-    SplitSite { name: "producthunt.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "producthunt.com" } },
-    SplitSite { name: "cloudflare.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "www.cloudflare.com" } },
-    SplitSite { name: "cloudflare cdnjs", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "cdnjs.cloudflare.com" } },
-    SplitSite { name: "npm registry", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "registry.npmjs.org" } },
-    SplitSite { name: "kali.download", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "kali.download" } },
-    SplitSite { name: "unpkg.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "unpkg.com" } },
-    SplitSite { name: "nodejs.org", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "nodejs.org" } },
-    SplitSite { name: "gitlab.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "gitlab.com" } },
-    SplitSite { name: "crunchyroll.com", kind: SiteKind::International, method: SplitMethod::Cftrace { domain: "crunchyroll.com" } },
+    SplitSite {
+        name: "discord.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "gateway.discord.gg",
+        },
+    },
+    SplitSite {
+        name: "x.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace { domain: "x.com" },
+    },
+    SplitSite {
+        name: "medium.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "medium.com",
+        },
+    },
+    SplitSite {
+        name: "signal.org",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "signal.org",
+        },
+    },
+    SplitSite {
+        name: "anthropic.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "anthropic.com",
+        },
+    },
+    SplitSite {
+        name: "claude.ai",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "claude.ai",
+        },
+    },
+    SplitSite {
+        name: "chatgpt.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "chatgpt.com",
+        },
+    },
+    SplitSite {
+        name: "openai.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "openai.com",
+        },
+    },
+    SplitSite {
+        name: "sora.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace { domain: "sora.com" },
+    },
+    SplitSite {
+        name: "grok.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace { domain: "grok.com" },
+    },
+    SplitSite {
+        name: "pixpix.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "pixpix.com",
+        },
+    },
+    SplitSite {
+        name: "perplexity.ai",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "www.perplexity.ai",
+        },
+    },
+    SplitSite {
+        name: "midjourney.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "midjourney.com",
+        },
+    },
+    SplitSite {
+        name: "mistral.ai",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "mistral.ai",
+        },
+    },
+    SplitSite {
+        name: "coinbase.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "coinbase.com",
+        },
+    },
+    SplitSite {
+        name: "www.okx.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "www.okx.com",
+        },
+    },
+    SplitSite {
+        name: "binance.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "www.binance.info",
+        },
+    },
+    SplitSite {
+        name: "crypto.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "crypto.com",
+        },
+    },
+    SplitSite {
+        name: "zoom.us",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace { domain: "zoom.us" },
+    },
+    SplitSite {
+        name: "1password.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "1password.com",
+        },
+    },
+    SplitSite {
+        name: "wise.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace { domain: "wise.com" },
+    },
+    SplitSite {
+        name: "poe.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace { domain: "poe.com" },
+    },
+    SplitSite {
+        name: "notion.so",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "notion.so",
+        },
+    },
+    SplitSite {
+        name: "shopify.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "shopify.com",
+        },
+    },
+    SplitSite {
+        name: "godaddy.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "godaddy.com",
+        },
+    },
+    SplitSite {
+        name: "producthunt.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "producthunt.com",
+        },
+    },
+    SplitSite {
+        name: "cloudflare.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "www.cloudflare.com",
+        },
+    },
+    SplitSite {
+        name: "cloudflare cdnjs",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "cdnjs.cloudflare.com",
+        },
+    },
+    SplitSite {
+        name: "npm registry",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "registry.npmjs.org",
+        },
+    },
+    SplitSite {
+        name: "kali.download",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "kali.download",
+        },
+    },
+    SplitSite {
+        name: "unpkg.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "unpkg.com",
+        },
+    },
+    SplitSite {
+        name: "nodejs.org",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "nodejs.org",
+        },
+    },
+    SplitSite {
+        name: "gitlab.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "gitlab.com",
+        },
+    },
+    SplitSite {
+        name: "crunchyroll.com",
+        kind: SiteKind::International,
+        method: SplitMethod::Cftrace {
+            domain: "crunchyroll.com",
+        },
+    },
 ];
 
 /// 汇总里的一个去重出口：同一出口 IP 被哪些站点看到。
@@ -107,7 +309,9 @@ pub struct SplitExit {
 pub fn is_valid_ip(text: &str) -> bool {
     if text.contains(':') {
         return !text.is_empty()
-            && text.chars().all(|c| c.is_ascii_hexdigit() || c == ':' || c == '.');
+            && text
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() || c == ':' || c == '.');
     }
     let octets: Vec<&str> = text.split('.').collect();
     octets.len() == 4
@@ -160,17 +364,18 @@ pub fn dedup_exits(records: &[(&'static str, String, String)]) -> Vec<SplitExit>
     for (site, ip, cc) in records {
         let exit = map.entry(ip.clone()).or_insert_with(|| {
             order.push(ip.clone());
-            SplitExit { ip: ip.clone(), country_code: String::new(), sites: Vec::new() }
+            SplitExit {
+                ip: ip.clone(),
+                country_code: String::new(),
+                sites: Vec::new(),
+            }
         });
         if exit.country_code.is_empty() {
             exit.country_code = cc.clone();
         }
         exit.sites.push(site);
     }
-    order
-        .into_iter()
-        .filter_map(|ip| map.remove(&ip))
-        .collect()
+    order.into_iter().filter_map(|ip| map.remove(&ip)).collect()
 }
 
 /// 带重试地探测单站出口 IP：最多 1 次首发 + `delays` 逐项对应的重试（2s/4s）。
@@ -207,16 +412,11 @@ pub async fn probe_site(client: &reqwest::Client, site: &SplitSite) -> Option<St
 /// 单次探测（无重试）。
 async fn probe_site_once(client: &reqwest::Client, site: &SplitSite) -> Option<String> {
     match site.method {
-        SplitMethod::Cftrace { domain } => {
-            trace::fetch_trace(client, domain).await?.ip
-        }
+        SplitMethod::Cftrace { domain } => trace::fetch_trace(client, domain).await?.ip,
         SplitMethod::Netease => header_ip(client, NETEASE_URL, &["cdn-user-ip"]).await,
         SplitMethod::Bytedance { url } => {
             let headers = head_headers(client, url).await?;
-            pick_bytedance_ip(
-                headers.get("x-request-ip"),
-                headers.get("x-response-cinfo"),
-            )
+            pick_bytedance_ip(headers.get("x-request-ip"), headers.get("x-response-cinfo"))
         }
     }
 }
@@ -267,7 +467,7 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        SiteKind, SplitMethod, SITES, dedup_exits, is_public_ip, is_valid_ip, pick_bytedance_ip,
+        SITES, SiteKind, SplitMethod, dedup_exits, is_public_ip, is_valid_ip, pick_bytedance_ip,
         with_retries,
     };
     use crate::net::split::SplitExit;
@@ -276,12 +476,30 @@ mod tests {
     fn site_list_matches_live_site_shape() {
         // 活站 2026-10-01：4 国内（网易/字节/CF 中国/高通）+ 34 国际 = 38 站
         assert_eq!(SITES.len(), 38);
-        assert_eq!(SITES.iter().filter(|s| s.kind == SiteKind::Domestic).count(), 4);
-        let cftrace = SITES.iter().filter(|s| matches!(s.method, SplitMethod::Cftrace { .. })).count();
-        assert_eq!(cftrace, 36);
-        assert_eq!(SITES.iter().filter(|s| s.method == SplitMethod::Netease).count(), 1);
         assert_eq!(
-            SITES.iter().filter(|s| matches!(s.method, SplitMethod::Bytedance { .. })).count(),
+            SITES
+                .iter()
+                .filter(|s| s.kind == SiteKind::Domestic)
+                .count(),
+            4
+        );
+        let cftrace = SITES
+            .iter()
+            .filter(|s| matches!(s.method, SplitMethod::Cftrace { .. }))
+            .count();
+        assert_eq!(cftrace, 36);
+        assert_eq!(
+            SITES
+                .iter()
+                .filter(|s| s.method == SplitMethod::Netease)
+                .count(),
+            1
+        );
+        assert_eq!(
+            SITES
+                .iter()
+                .filter(|s| matches!(s.method, SplitMethod::Bytedance { .. }))
+                .count(),
             1
         );
     }
@@ -370,7 +588,11 @@ mod tests {
         let exits = dedup_exits(&[
             ("claude.ai", "203.0.113.101".to_string(), "us".to_string()),
             ("chatgpt.com", "203.0.113.101".to_string(), String::new()),
-            ("www.binance.info", "198.51.100.3".to_string(), "jp".to_string()),
+            (
+                "www.binance.info",
+                "198.51.100.3".to_string(),
+                "jp".to_string(),
+            ),
             ("x.com", "203.0.113.101".to_string(), "us".to_string()),
         ]);
         assert_eq!(
@@ -412,7 +634,11 @@ mod tests {
                 let calls = Arc::clone(&calls_cloned);
                 async move {
                     let n = calls.fetch_add(1, Ordering::SeqCst);
-                    if n == 0 { None } else { Some("1.2.3.4".to_string()) }
+                    if n == 0 {
+                        None
+                    } else {
+                        Some("1.2.3.4".to_string())
+                    }
                 }
             },
             &[Duration::from_millis(1), Duration::from_millis(1)],
