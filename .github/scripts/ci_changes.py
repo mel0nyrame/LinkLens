@@ -20,7 +20,14 @@ def requires_rust(paths, has_cargo=True):
 if __name__ == "__main__":
     base = os.environ.get("BASE_SHA", "")
     head = os.environ["HEAD_SHA"]
-    if not base or set(base) == {"0"}:
+    available = bool(base) and set(base) != {"0"}
+    if available:
+        available = subprocess.run(["git", "cat-file", "-e", base + "^{commit}"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if not available:
+            available = subprocess.run(["git", "fetch", "--no-tags", "--depth=1", "origin", base],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    if not available:
         command = ["git", "ls-files", "-z"]
     else:
         command = ["git", "diff", "--name-only", "--no-renames", "-z", base, head]

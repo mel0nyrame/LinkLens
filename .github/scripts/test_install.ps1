@@ -7,16 +7,16 @@ $oldPath = $env:Path
 $oldDir = $env:LINKLENS_INSTALL_DIR
 $oldVersion = $env:LINKLENS_VERSION
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
-$script:fixtureDir = $tempRoot
-$script:badChecksum = $false
+$env:LINKLENS_TEST_FIXTURE_DIR = $tempRoot
+$env:LINKLENS_TEST_BAD_CHECKSUM = '0'
 function Invoke-RestMethod { param($Uri) return @{tag_name = 'v1.2.3'} }
 function Invoke-WebRequest {
     param($Uri, $OutFile)
     if ($OutFile) {
-        Copy-Item (Join-Path $script:fixtureDir 'fixture.zip') $OutFile
+        Copy-Item (Join-Path $env:LINKLENS_TEST_FIXTURE_DIR 'fixture.zip') $OutFile
     } else {
-        $hash = (Get-FileHash (Join-Path $script:fixtureDir 'fixture.zip') -Algorithm SHA256).Hash.ToLower()
-        if ($script:badChecksum) { $hash = '0' * 64 }
+        $hash = (Get-FileHash (Join-Path $env:LINKLENS_TEST_FIXTURE_DIR 'fixture.zip') -Algorithm SHA256).Hash.ToLower()
+        if (($env:LINKLENS_TEST_BAD_CHECKSUM -eq '1')) { $hash = '0' * 64 }
         return @{Content = "$hash  linklens-v1.2.3-x86_64-pc-windows-msvc.zip`n"}
     }
 }
@@ -32,7 +32,7 @@ try {
     foreach ($name in @('linklens.exe', 'llens.exe')) {
         if (-not (Test-Path (Join-Path $env:LINKLENS_INSTALL_DIR $name))) { throw "Missing $name" }
     }
-    $script:badChecksum = $true
+    $env:LINKLENS_TEST_BAD_CHECKSUM = '1'
     $env:LINKLENS_INSTALL_DIR = Join-Path $tempRoot 'rejected'
     $failed = $false
     try { & (Join-Path $root 'install.ps1') } catch { $failed = $true }
@@ -43,5 +43,6 @@ try {
     $env:Path = $oldPath
     $env:LINKLENS_INSTALL_DIR = $oldDir
     $env:LINKLENS_VERSION = $oldVersion
+    Remove-Item Env:LINKLENS_TEST_FIXTURE_DIR, Env:LINKLENS_TEST_BAD_CHECKSUM -ErrorAction SilentlyContinue
     Remove-Item $tempRoot -Recurse -Force
 }
