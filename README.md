@@ -52,7 +52,7 @@ irm https://raw.githubusercontent.com/mel0nyrame/LinkLens/main/install.ps1 | iex
 linklens
 ```
 
-Windows 安装到 `%LOCALAPPDATA%\LinkLens\bin`，并添加到用户 `PATH`。macOS、Linux 和 Windows Git Bash 也可以使用上面的 curl 脚本。安装选项：`LINKLENS_VERSION=v0.1.0` 可指定版本，`LINKLENS_INSTALL_DIR` 可指定目录；重新运行脚本即可更新程序。
+Windows 安装到 `%LOCALAPPDATA%\LinkLens\bin`，并添加到用户 `PATH`。macOS、Linux 和 Windows Git Bash 也可以使用上面的 curl 脚本。安装选项：`LINKLENS_VERSION=v0.1.1` 可指定版本，`LINKLENS_INSTALL_DIR` 可指定目录；重新运行脚本即可更新程序。
 
 也可以从 [Releases](https://github.com/mel0nyrame/LinkLens/releases/latest) 下载并解压匹配的包，直接运行 `linklens` 或 `llens`（Windows 使用 `.exe`），无需工具链。
 
