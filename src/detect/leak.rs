@@ -59,9 +59,105 @@ pub fn is_private_addr(ip: IpAddr) -> bool {
     }
 }
 
+/// WebRTC 候选类型（接口报告约定三分类）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CandidateKind {
+    /// 经 STUN 反射得到的公网地址。
+    PublicStun,
+    /// 经 TURN 中继得到的地址（本工具无 TURN，仅保留分类完整性）。
+    Relay,
+    /// 本地/主机候选（含私网地址）。
+    Local,
+}
+
+impl CandidateKind {
+    /// 展示文案（接口报告约定）。
+    pub fn label(self) -> &'static str {
+        match self {
+            CandidateKind::PublicStun => "公网 (STUN)",
+            CandidateKind::Relay => "中继 (TURN)",
+            CandidateKind::Local => "本地",
+        }
+    }
+}
+
+/// 一条 WebRTC 候选（已过私网过滤，供展示）。
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct WebrtcCandidate {
+    pub ip: IpAddr,
+    pub kind: CandidateKind,
+}
+
+/// 候选分类（纯函数）：STUN 反射地址 → 公网 (STUN)；私网地址 → 本地；
+/// 其余（主机候选的公网地址等）→ 本地。中继需 TURN，本工具不产生。
+pub fn classify_candidate(ip: IpAddr, reflexive: bool) -> CandidateKind {
+    if reflexive && !is_private_addr(ip) {
+        return CandidateKind::PublicStun;
+    }
+    CandidateKind::Local
+}
+
+/// 依私网段清单过滤并整理 STUN 采集到的候选清单（纯函数）：私网剔除、按 IP 去重保序。
+pub fn collect_candidates(stun_mapped: &[IpAddr]) -> Vec<WebrtcCandidate> {
+    let mut out: Vec<WebrtcCandidate> = Vec::new();
+    for &ip in stun_mapped {
+        if is_private_addr(ip) || out.iter().any(|c| c.ip == ip) {
+            continue;
+        }
+        out.push(WebrtcCandidate {
+            ip,
+            kind: classify_candidate(ip, true),
+        });
+    }
+    out
+}
+
+/// WebRTC 泄漏三态判定结论。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WebrtcVerdict {
+    /// 可能泄漏：公网 UDP 地址与 HTTP 出口不一致。
+    MaybeLeak,
+    /// 未发现公网 UDP 地址：WebRTC 已禁用或未暴露。
+    NoPublic,
+    /// 干净：公网 UDP 地址与 HTTP 出口一致。
+    Clean,
+}
+
+/// WebRTC 泄漏判定（纯函数，票面规则 + 上游接口报告规则）。
+///
+/// - 无公网 UDP 地址 → [`WebrtcVerdict::NoPublic`]；
+/// - HTTP 出口已知：任一公网 UDP 地址 ≠ 出口 → [`WebrtcVerdict::MaybeLeak`]，否则干净；
+/// - HTTP 出口未知：出现 ≥2 个不同公网地址（上游接口报告规则「多个不同公网 STUN IP」）→
+///   [`WebrtcVerdict::MaybeLeak`]，否则干净。
+pub fn judge_webrtc(public_ips: &[IpAddr], egress: Option<IpAddr>) -> WebrtcVerdict {
+    if public_ips.is_empty() {
+        return WebrtcVerdict::NoPublic;
+    }
+    match egress {
+        Some(exit) => {
+            if public_ips.iter().any(|&ip| ip != exit) {
+                WebrtcVerdict::MaybeLeak
+            } else {
+                WebrtcVerdict::Clean
+            }
+        }
+        None => {
+            let distinct = public_ips.iter().collect::<std::collections::HashSet<_>>();
+            if distinct.len() >= 2 {
+                WebrtcVerdict::MaybeLeak
+            } else {
+                WebrtcVerdict::Clean
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DnsVerdict, IpAddr, is_private_addr, judge_dns};
+    use super::{
+        CandidateKind, DnsVerdict, IpAddr, WebrtcVerdict, classify_candidate, collect_candidates,
+        is_private_addr, judge_dns, judge_webrtc,
+    };
     use std::net::Ipv4Addr;
 
     #[test]
@@ -136,5 +232,115 @@ mod tests {
         assert!(!is_private_addr("::2".parse().expect("合法")));
         // std 的 Ipv4Addr::is_private 覆盖 RFC1918，这里交叉确认常量清单未被误改
         assert!(is_private_addr(IpAddr::from(Ipv4Addr::new(10, 1, 2, 3))));
+    }
+
+    fn ip(text: &str) -> IpAddr {
+        text.parse().expect("测试 IP 应合法")
+    }
+
+    #[test]
+    fn reflexive_public_address_is_public_stun() {
+        assert_eq!(
+            classify_candidate(ip("8.8.8.8"), true),
+            CandidateKind::PublicStun
+        );
+        assert_eq!(
+            classify_candidate(ip("2606:4700:4700::1111"), true),
+            CandidateKind::PublicStun
+        );
+    }
+
+    #[test]
+    fn private_or_non_reflexive_addresses_are_local() {
+        assert_eq!(
+            classify_candidate(ip("192.168.1.2"), true),
+            CandidateKind::Local
+        );
+        assert_eq!(
+            classify_candidate(ip("8.8.8.8"), false),
+            CandidateKind::Local
+        );
+    }
+
+    #[test]
+    fn collect_candidates_filters_private_and_dedups_in_order() {
+        let candidates = collect_candidates(&[
+            ip("8.8.8.8"),
+            ip("10.0.0.5"),        // 私网剔除
+            ip("8.8.8.8"),         // 去重
+            ip("2606:4700::1111"), // IPv6 保留
+            ip("fe80::1"),         // 链路本地剔除
+        ]);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|c| c.ip.to_string())
+                .collect::<Vec<_>>(),
+            vec!["8.8.8.8", "2606:4700::1111"]
+        );
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.kind == CandidateKind::PublicStun)
+        );
+    }
+
+    #[test]
+    fn collect_candidates_empty_input_is_empty() {
+        assert!(collect_candidates(&[]).is_empty());
+    }
+
+    #[test]
+    fn webrtc_no_public_address_means_not_exposed() {
+        assert_eq!(
+            judge_webrtc(&[], Some(ip("1.2.3.4"))),
+            WebrtcVerdict::NoPublic
+        );
+        assert_eq!(judge_webrtc(&[], None), WebrtcVerdict::NoPublic);
+    }
+
+    #[test]
+    fn webrtc_public_mismatching_egress_is_possible_leak() {
+        // 任一公网 UDP 地址 ≠ HTTP 出口 → 可能泄漏（票面规则）
+        assert_eq!(
+            judge_webrtc(&[ip("203.0.113.7")], Some(ip("1.2.3.4"))),
+            WebrtcVerdict::MaybeLeak
+        );
+        // 其余一致、仅一个不同也算
+        assert_eq!(
+            judge_webrtc(&[ip("1.2.3.4"), ip("203.0.113.7")], Some(ip("1.2.3.4"))),
+            WebrtcVerdict::MaybeLeak
+        );
+        // IPv6 候选与 IPv4 出口天然不一致 → 泄漏
+        assert_eq!(
+            judge_webrtc(&[ip("1.2.3.4"), ip("2606:4700::1111")], Some(ip("1.2.3.4"))),
+            WebrtcVerdict::MaybeLeak
+        );
+    }
+
+    #[test]
+    fn webrtc_public_matching_egress_is_clean() {
+        assert_eq!(
+            judge_webrtc(&[ip("1.2.3.4")], Some(ip("1.2.3.4"))),
+            WebrtcVerdict::Clean
+        );
+        assert_eq!(
+            judge_webrtc(&[ip("1.2.3.4"), ip("1.2.3.4")], Some(ip("1.2.3.4"))),
+            WebrtcVerdict::Clean
+        );
+    }
+
+    #[test]
+    fn webrtc_unknown_egress_falls_back_to_distinct_count() {
+        // 上游接口报告规则：多个不同公网 STUN IP → 可能泄漏
+        assert_eq!(
+            judge_webrtc(&[ip("203.0.113.7"), ip("203.0.113.9")], None),
+            WebrtcVerdict::MaybeLeak
+        );
+        // 单一公网地址且出口未知：无法对照，不算泄漏
+        assert_eq!(
+            judge_webrtc(&[ip("203.0.113.7")], None),
+            WebrtcVerdict::Clean
+        );
     }
 }
