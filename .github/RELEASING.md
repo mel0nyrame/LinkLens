@@ -28,3 +28,5 @@ Release 校验标签与 Cargo 版本一致，要求对应文案文件，然后�
 全部构建通过后才发布：先创建 draft，再上传附件，最后用文案文件公开 Release。流程不使用自动生成的发布说明；失败时修复 `dev` 并发布新版本，或对未公开的失败运行执行重试，保持已公开标签不可变。
 
 安装入口是根目录 `install.sh`（macOS / Linux / Windows Git Bash）和 `install.ps1`（原生 Windows PowerShell）。包名、目标名称及校验文件是脚本与 workflow 的共同协议，修改时一起验证。GitHub 托管二进制未进行 Apple Developer 或 Windows 代码签名。
+
+Windows 安装脚本以 UTF-8 with BOM 保存，兼容系统自带 PowerShell 5.1 的中文解析；更改脚本后必须同时通过 PowerShell 5.1 和 7 的安装验证。下载使用 basic parsing，校验清单先保存为文件再读取，避免二进制响应内容类型造成解析差异。
