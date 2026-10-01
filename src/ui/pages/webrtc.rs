@@ -5,11 +5,10 @@
 //! - 候选列表：逐项类型标注（公网 STUN / 中继 / 本地）+ 国旗 + IP；
 //! - 底部提示：代理模式下 UDP 通常不通，TUN 模式结果才准确；按 r 重新探测。
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::detect::leak::{CandidateKind, WebrtcVerdict};
 use crate::state_leak::{WebrtcPhase, WebrtcState};
@@ -18,51 +17,29 @@ use crate::theme::color::{
 };
 use crate::theme::icon::{self, Icon};
 use crate::theme::widget::{badge, card, kv};
-use crate::ui::layout::card_grid_columns;
 use crate::ui::mask::display_ip;
+use crate::ui::scroll::card_canvas;
 
-/// 顶部两卡高度。
-const TOP_HEIGHT: u16 = 5;
 /// 提示文案：代理模式 UDP 不通、TUN 模式才准。
 const UDP_HINT: &str = "提示：代理模式下 UDP 通常不通，采不到公网地址不代表没泄漏；TUN 模式下结果才准确。按 r 重新探测";
 
-/// 渲染 WebRTC 泄漏页。
-pub fn render(f: &mut Frame, area: Rect, webrtc: &WebrtcState, hide_ip: bool) {
-    let [top, list, hint] = Layout::vertical([
-        Constraint::Length(TOP_HEIGHT),
-        Constraint::Min(3),
-        Constraint::Length(1),
-    ])
-    .areas(area);
-
-    // 宽终端两卡并排，窄终端纵排
-    if card_grid_columns(area.width) >= 3 {
-        let [verdict_rect, egress_rect] =
-            Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).areas(top);
-        render_verdict(f, verdict_rect, webrtc);
-        render_egress(f, egress_rect, webrtc, hide_ip);
-    } else {
-        let [verdict_rect, egress_rect] = Layout::vertical([
-            Constraint::Length(TOP_HEIGHT),
-            Constraint::Length(TOP_HEIGHT),
-        ])
-        .areas(top);
-        render_verdict(f, verdict_rect, webrtc);
-        render_egress(f, egress_rect, webrtc, hide_ip);
-    }
-
-    render_candidates(f, list, webrtc, hide_ip);
-    f.render_widget(
-        Paragraph::new(Line::styled(UDP_HINT, Style::new().fg(THEME_MUTED))),
-        hint,
-    );
+/// 按正文高度生成完整页面，供统一视口滚动。
+pub fn canvas(width: u16, webrtc: &WebrtcState, hide_ip: bool) -> Buffer {
+    card_canvas(
+        width,
+        vec![
+            render_verdict(webrtc),
+            render_egress(webrtc, hide_ip),
+            render_candidates(webrtc, hide_ip),
+            Paragraph::new(Line::styled(UDP_HINT, Style::new().fg(THEME_MUTED)))
+                .block(card("链路提示")),
+        ],
+    )
 }
 
 /// 结论卡：三态判定的徽章与文案。
-fn render_verdict(f: &mut Frame, area: Rect, webrtc: &WebrtcState) {
+fn render_verdict(webrtc: &WebrtcState) -> Paragraph<'static> {
     let block = card(icon::labeled(Icon::WebRtc, "检测结论"));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
 
     let lines = match (webrtc.phase, &webrtc.verdict) {
         (WebrtcPhase::Idle, _) => vec![Line::from(Span::styled(
@@ -96,7 +73,9 @@ fn render_verdict(f: &mut Frame, area: Rect, webrtc: &WebrtcState) {
             Style::new().fg(THEME_ERROR),
         ))],
     };
-    f.render_widget(Paragraph::new(lines), inner);
+    Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
 }
 
 /// 三态判定的展示三元组（徽章文案、语义色、结论文案，照上游接口报告判定文案）。
@@ -121,10 +100,8 @@ fn verdict_display(verdict: WebrtcVerdict) -> (&'static str, Color, &'static str
 }
 
 /// 出口参照卡：HTTP 出口 IP 与归属地。
-fn render_egress(f: &mut Frame, area: Rect, webrtc: &WebrtcState, hide_ip: bool) {
+fn render_egress(webrtc: &WebrtcState, hide_ip: bool) -> Paragraph<'static> {
     let block = card(icon::labeled(Icon::Earth, "当前出口（HTTP）"));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
 
     let lines = match &webrtc.egress_ip {
         Some(ip) => vec![
@@ -135,11 +112,22 @@ fn render_egress(f: &mut Frame, area: Rect, webrtc: &WebrtcState, hide_ip: bool)
             kv("归属地", &webrtc.egress_geo),
         ],
         None => vec![Line::styled(
-            "出口获取中…".to_string(),
-            Style::new().fg(THEME_MUTED),
+            match webrtc.phase {
+                WebrtcPhase::Idle => "尚未开始出口探测",
+                WebrtcPhase::Running => "出口获取中…",
+                WebrtcPhase::Done => "出口获取失败（探测失败或超时）",
+            }
+            .to_string(),
+            Style::new().fg(if webrtc.phase == WebrtcPhase::Done {
+                THEME_ERROR
+            } else {
+                THEME_MUTED
+            }),
         )],
     };
-    f.render_widget(Paragraph::new(lines), inner);
+    Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
 }
 
 /// 候选类型徽章色：公网 STUN 黄（暴露信号）、中继青、本地暗灰。
@@ -152,14 +140,12 @@ fn kind_color(kind: CandidateKind) -> Color {
 }
 
 /// 候选列表卡：逐项类型徽章 + 国旗 + IP。
-fn render_candidates(f: &mut Frame, area: Rect, webrtc: &WebrtcState, hide_ip: bool) {
+fn render_candidates(webrtc: &WebrtcState, hide_ip: bool) -> Paragraph<'static> {
     let title = icon::labeled(
         Icon::Connection,
         &format!("ICE 候选（公网 {} 个）", webrtc.candidates.len()),
     );
     let block = card(title);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     match webrtc.phase {
@@ -188,5 +174,7 @@ fn render_candidates(f: &mut Frame, area: Rect, webrtc: &WebrtcState, hide_ip: b
             }
         }
     }
-    f.render_widget(Paragraph::new(lines), inner);
+    Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
 }

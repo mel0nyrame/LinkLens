@@ -2,7 +2,7 @@
 //!
 //! 键位约定：`1`-`7` 直达页面，`←`/`→`（或 `h`/`l`、`Tab`/`Shift+Tab`）顺序循环，
 //! `i` 切换隐藏 IP 打码，`r` 在 Claude/GPT 检测页重查，`q`/`Esc`/`Ctrl+C` 退出。
-//! 带输入框的页面在后续票中先行消费按键，再回落到此层。
+//! 评分页输入焦点先行消费按键，再回落到此层。
 //! 隐藏 IP 是全局开关：影响所有页面的 IP 显示。
 
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -92,11 +92,31 @@ pub struct App {
     /// `r` 键置位的重查请求（仅 Claude/GPT 页），事件循环消费后复位。
     pub ai_refresh: bool,
     pub should_quit: bool,
+    /// 各页独立保存垂直位置；评分页由其输入与查询状态持有滚动位置。
+    pub scroll: [u16; 7],
 }
 
 impl App {
     pub fn new() -> App {
         App::default()
+    }
+
+    pub fn scroll_offset(&self) -> u16 {
+        self.scroll[self.page.position()]
+    }
+
+    pub fn clamp_scroll(&mut self, max: u16) {
+        let scroll = &mut self.scroll[self.page.position()];
+        *scroll = (*scroll).min(max);
+    }
+
+    pub fn handle_scroll(&mut self, key: KeyCode, max: u16) -> bool {
+        if let Some(offset) = ui::scroll::key_scroll(self.scroll_offset(), key, max) {
+            self.scroll[self.page.position()] = offset;
+            true
+        } else {
+            false
+        }
     }
 
     /// 全局键位处理；不带输入焦点的假设下由事件循环直接调用。
@@ -141,7 +161,7 @@ pub async fn run() -> std::io::Result<()> {
         if shared.lock().app.should_quit {
             break Ok(());
         }
-        // 首次进入连通页时启动 47 目标测量（仅一次）
+        // 首次进入连通页时启动全部目标测量（仅一次）
         if !link_spawned && shared.lock().app.page == Page::Connectivity {
             probe::spawn_link(shared.clone());
             link_spawned = true;
@@ -180,6 +200,10 @@ pub async fn run() -> std::io::Result<()> {
                     &snapshot.score,
                     snapshot.app.hide_ip,
                 ));
+            } else {
+                let content = ui::shell::content_area(terminal.get_frame().area());
+                let max = ui::pages::max_scroll(content, &snapshot);
+                snapshot.app.clamp_scroll(max);
             }
             if let Err(err) = terminal.draw(|f| ui::shell::render(f, &snapshot)) {
                 break Err(err);
@@ -196,7 +220,11 @@ pub async fn run() -> std::io::Result<()> {
                                 let content = ui::shell::content_area(terminal.get_frame().area());
                                 let max_scroll = ui::pages::ip_score::max_scroll(content, &snapshot.score, snapshot.app.hide_ip);
                                 snapshot.score.handle_key(key.code, key.modifiers, max_scroll)
-                            } else { false }
+                            } else {
+                                let content = ui::shell::content_area(terminal.get_frame().area());
+                                let max = ui::pages::max_scroll(content, &snapshot);
+                                snapshot.app.handle_scroll(key.code, max)
+                            }
                         };
                         if !consumed {
                             let page = shared.lock().app.page;

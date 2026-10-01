@@ -1,19 +1,19 @@
-//! 网络连通页：47 目标按 cn/jp/us/全球四组的全量连通表。
+//! 网络连通页：目标清单按 cn/jp/us/全球四组的全量连通表。
 //!
-//! 每行 = 目标名 + 12 轮状态色点 + 中位延迟（分档色，失败「超时」）；
+//! 每行 = 目标名 + 8 轮状态色点 + 中位延迟（分档色，失败「超时」）；
 //! 组头给出可达数与组内中位延迟平均；与首页 6 目标小卡共用同一计时工具
-//! （`net::latency`，预热 1 次 + 12 轮取中位数）。
+//! （`net::latency`，预热 1 次 + 8 轮取中位数）。
 //!
-//! 布局：宽 ≥90 列时四组两两并排（2×2），窄终端单列纵排（超出部分裁剪）。
+//! 布局：宽 ≥90 列时四组两两并排（2×2），窄终端单列纵排，超出部分通过整页滚动查看。
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Paragraph, Widget, Wrap};
 
 use crate::net::latency::RoundPlan;
-use crate::net::targets::{GROUPS, GroupId, TARGETS};
+use crate::net::targets::{GROUPS, TARGETS};
 use crate::state::{LatencyState, LinkState};
 use crate::theme::color::{THEME_MUTED, THEME_TEXT};
 use crate::theme::icon::{self, Icon};
@@ -21,80 +21,67 @@ use crate::theme::widget::card;
 
 use super::latency_display;
 
-/// 渲染网络连通页。
-pub fn render(f: &mut Frame, area: Rect, link: &LinkState) {
+/// 完整分组画布；宽屏两列、窄屏单列，保留清单全部目标。
+pub fn canvas(width: u16, link: &LinkState) -> Buffer {
     if !link.started {
-        let block = card(icon::labeled(Icon::Connectivity, "网络连通"));
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-        f.render_widget(
-            Paragraph::new(Line::styled(
-                "进入本页即开始 47 目标连通测量…",
-                Style::new().fg(THEME_MUTED),
-            )),
-            inner,
+        return crate::ui::scroll::card_canvas(
+            width,
+            vec![
+                Paragraph::new(format!("进入本页即开始 {} 目标连通测量…", TARGETS.len()))
+                    .block(card(icon::labeled(Icon::Connectivity, "网络连通"))),
+            ],
         );
-        return;
     }
-
-    // 组行高：按各组最大行数预留（每组标题 1 行 + 目标行）
-    let rows_per_group = [
-        group_len(GroupId::Cn),
-        group_len(GroupId::Jp),
-        group_len(GroupId::Us),
-        group_len(GroupId::Global),
-    ];
-    let band_heights = [
-        rows_per_group[0].max(rows_per_group[1]) as u16 + 1,
-        rows_per_group[2].max(rows_per_group[3]) as u16 + 1,
-    ];
-    let wide = area.width >= crate::ui::layout::GRID_MIN_WIDTH;
-
-    let (top_rects, bottom_rects) = if wide {
-        let [top, bottom] =
-            Layout::vertical([Constraint::Length(band_heights[0]), Constraint::Min(0)]).areas(area);
-        let top_rects: [Rect; 2] =
-            Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).areas(top);
-        let bottom_rects: [Rect; 2] =
-            Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).areas(bottom);
-        (top_rects, bottom_rects)
+    let columns = if width >= crate::ui::layout::GRID_MIN_WIDTH {
+        2
     } else {
-        let [g0, g1, g2, g3] = Layout::vertical([
-            Constraint::Length(band_heights[0]),
-            Constraint::Length(band_heights[1]),
-            Constraint::Length(band_heights[0]),
-            Constraint::Length(band_heights[1]),
-        ])
-        .areas(area);
-        ([g0, g1], [g2, g3])
+        1
     };
-
-    for (group_index, group) in GROUPS.iter().enumerate() {
-        let rect = if group_index < 2 {
-            top_rects[group_index]
-        } else {
-            bottom_rects[group_index - 2]
-        };
-        render_group(f, rect, group_index, group.flag, group.name, link);
+    let column_width = width.saturating_sub(columns - 1) / columns;
+    let cards: Vec<_> = GROUPS
+        .iter()
+        .enumerate()
+        .map(|(i, group)| group_card(column_width, i, group.flag, group.name, link))
+        .collect();
+    let mut y = 0u16;
+    let mut rects = Vec::new();
+    for row in cards.chunks(usize::from(columns)) {
+        let height = row
+            .iter()
+            .map(|p| p.line_count(column_width.saturating_sub(4).max(1)))
+            .max()
+            .unwrap_or(2)
+            .min(usize::from(u16::MAX)) as u16;
+        for col in 0..row.len() {
+            rects.push(Rect::new(
+                col as u16 * (column_width + 1),
+                y,
+                column_width,
+                height,
+            ));
+        }
+        y = y.saturating_add(height).saturating_add(1);
     }
+    let mut buffer = Buffer::empty(Rect::new(0, 0, width, y.saturating_sub(1)));
+    for (paragraph, rect) in cards.into_iter().zip(rects) {
+        paragraph.render(rect, &mut buffer);
+    }
+    buffer
 }
 
-/// 渲染一组：组卡（标题含国旗与汇总）+ 目标行。
-fn render_group(
-    f: &mut Frame,
-    area: Rect,
+fn group_card(
+    width: u16,
     group_index: usize,
     flag: &str,
     name: &str,
     link: &LinkState,
-) {
+) -> Paragraph<'static> {
     let targets: Vec<(usize, &LatencyState)> = TARGETS
         .iter()
         .enumerate()
         .filter(|(_, t)| t.group.index() == group_index)
         .filter_map(|(i, _)| link.targets.get(i).map(|s| (i, s)))
         .collect();
-
     let (reachable, avg) = group_summary(&targets);
     let title = icon::labeled(
         Icon::Earth,
@@ -103,49 +90,51 @@ fn render_group(
             targets.len()
         ),
     );
-    let block = card(title);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    // 可显示行数受内区高度限制（超出裁剪，不滚动）
-    let capacity = usize::from(inner.height);
-    for (row, (_, target_state)) in targets.iter().take(capacity).enumerate() {
-        let row_area = Rect {
-            x: inner.x,
-            y: inner.y.saturating_add(row as u16),
-            width: inner.width,
-            height: 1,
-        };
-        render_target_row(f, row_area, target_state);
-    }
+    let lines = targets
+        .iter()
+        .map(|(_, target)| target_row(width.saturating_sub(4), target))
+        .collect::<Vec<_>>();
+    Paragraph::new(lines)
+        .block(card(title))
+        .wrap(Wrap { trim: false })
 }
 
-/// 单目标行：名称（截断）+ 12 轮色点 + 中位延迟。
-fn render_target_row(f: &mut Frame, area: Rect, target_state: &LatencyState) {
+/// 名称列按显示宽度对齐，保留 8 轮色点和延迟。
+fn target_row(width: u16, target_state: &LatencyState) -> Line<'static> {
     let (text, color) = latency_display(target_state);
-    // 名称列按终端宽度弹性分配：点 12 列 + 延迟 7 列，其余给名称
-    let name_width = usize::from(area.width.saturating_sub(RoundPlan::HOME.rounds as u16 + 9));
+    let name_width = usize::from(width.saturating_sub(RoundPlan::LINK.rounds as u16 + 10));
     let name = truncate_name(target_state.name, name_width);
+    let padding = name_width.saturating_sub(Line::raw(&name).width());
     let mut spans = vec![Span::styled(
-        format!("{name:<name_width$} "),
+        format!("{name}{} ", " ".repeat(padding)),
         Style::new().fg(THEME_TEXT),
     )];
     spans.extend(round_dots(target_state));
     spans.push(Span::raw(" "));
     spans.push(Span::styled(text, Style::new().fg(color).bold()));
-    f.render_widget(Paragraph::new(Line::from(spans)), area);
+    Line::from(spans)
 }
 
-/// 名称超宽截断并加省略号（含中文按字符数处理）。
-fn truncate_name(name: &str, max_chars: usize) -> String {
-    if name.chars().count() <= max_chars {
+/// 按终端显示宽度截断名称，省略号占一列。
+fn truncate_name(name: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    if Line::raw(name).width() <= width {
         return name.to_string();
     }
-    let cut: String = name.chars().take(max_chars.saturating_sub(1)).collect();
+    let mut cut = String::new();
+    for c in name.chars() {
+        let next_width = Line::raw(format!("{cut}{c}")).width();
+        if next_width >= width {
+            break;
+        }
+        cut.push(c);
+    }
     format!("{cut}…")
 }
 
-/// 12 轮色点：已测轮按当轮分档取色，未测轮暗灰小点。
+/// 8 轮色点：已测轮按当轮分档取色，未测轮暗灰小点。
 fn round_dots(target_state: &LatencyState) -> Vec<Span<'static>> {
     use crate::net::latency::tier as round_tier;
 
@@ -172,7 +161,15 @@ fn group_summary(targets: &[(usize, &LatencyState)]) -> (usize, String) {
     (reachable, format!("{avg}ms"))
 }
 
-/// 某组的目标数。
-fn group_len(group: GroupId) -> usize {
-    TARGETS.iter().filter(|t| t.group == group).count()
+#[cfg(test)]
+mod tests {
+    use super::truncate_name;
+
+    #[test]
+    fn chinese_target_names_fit_their_terminal_columns() {
+        assert_eq!(truncate_name("中国电信", 5), "中国…");
+        assert_eq!(truncate_name("中国电信", 8), "中国电信");
+        assert_eq!(truncate_name("Cloudflare", 8), "Cloudfl…");
+        assert_eq!(truncate_name("中国电信", 0), "");
+    }
 }
