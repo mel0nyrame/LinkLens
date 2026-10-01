@@ -4,7 +4,7 @@
 
 **Blocked by:** 02（首页与连通测量——复用其 geoip 客户端与出口探测）
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] 三出口 IP 卡并行探测（Claude 出口 8s 超时，trace 解析 `ip=` 与 `loc=`）
 - [x] 信任分卡：0-100 分值、五档徽章（≥95 极度纯净/≥80 纯净/≥50 良好/≥25 中性/<25 可疑）、渐变刻度条；响应 IP 是段代表时如实标注
