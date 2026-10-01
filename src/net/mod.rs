@@ -7,6 +7,7 @@
 
 pub mod cc;
 pub mod cn_source;
+pub mod dnsleak;
 pub mod geoip;
 pub mod http;
 pub mod iprisk;
