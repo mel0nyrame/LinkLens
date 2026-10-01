@@ -11,13 +11,14 @@ $env:LINKLENS_TEST_FIXTURE_DIR = $tempRoot
 $env:LINKLENS_TEST_BAD_CHECKSUM = '0'
 function Invoke-RestMethod { param($Uri) return @{tag_name = 'v1.2.3'} }
 function Invoke-WebRequest {
-    param($Uri, $OutFile)
-    if ($OutFile) {
-        Copy-Item (Join-Path $env:LINKLENS_TEST_FIXTURE_DIR 'fixture.zip') $OutFile
-    } else {
+    param($Uri, $OutFile, [switch]$UseBasicParsing)
+    if (-not $UseBasicParsing) { throw 'Downloads must use basic parsing.' }
+    if ($Uri.EndsWith('/SHA256SUMS')) {
         $hash = (Get-FileHash (Join-Path $env:LINKLENS_TEST_FIXTURE_DIR 'fixture.zip') -Algorithm SHA256).Hash.ToLower()
-        if (($env:LINKLENS_TEST_BAD_CHECKSUM -eq '1')) { $hash = '0' * 64 }
-        return @{Content = "$hash  linklens-v1.2.3-x86_64-pc-windows-msvc.zip`n"}
+        if ($env:LINKLENS_TEST_BAD_CHECKSUM -eq '1') { $hash = '0' * 64 }
+        Set-Content -Path $OutFile -Value "$hash  linklens-v1.2.3-x86_64-pc-windows-msvc.zip"
+    } else {
+        Copy-Item (Join-Path $env:LINKLENS_TEST_FIXTURE_DIR 'fixture.zip') $OutFile
     }
 }
 try {

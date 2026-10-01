@@ -19,8 +19,10 @@ $tempDir = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 try {
     $zip = Join-Path $tempDir $asset
-    Invoke-WebRequest -Uri "$base/$asset" -OutFile $zip
-    $checksums = (Invoke-WebRequest -Uri "$base/SHA256SUMS").Content
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile $zip
+    $sumsFile = Join-Path $tempDir 'SHA256SUMS'
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS" -OutFile $sumsFile
+    $checksums = Get-Content -LiteralPath $sumsFile -Raw
     $expected = @($checksums -split "`n" | Where-Object { $_.Trim() -match ('^[a-fA-F0-9]{64}\s+' + [regex]::Escape($asset) + '$') })
     if ($expected.Count -ne 1) { throw '未找到唯一的 SHA-256 校验值。' }
     $digest = ($expected[0] -split '\s+')[0]
