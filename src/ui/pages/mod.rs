@@ -9,27 +9,13 @@ pub mod ip_query;
 pub mod ip_score;
 pub mod webrtc;
 
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
-use ratatui::text::Line;
-use ratatui::widgets::Paragraph;
+use ratatui::style::Color;
 
 use crate::net::latency::{LatencyTier, tier};
 use crate::state::LatencyState;
 use crate::theme::color::{
     THEME_ERROR, THEME_MUTED, THEME_SUCCESS, THEME_SUCCESS_SOFT, THEME_WARNING,
 };
-use crate::theme::widget::card;
-
-/// 页面空壳统一占位：标题卡片 + 建设中提示。
-pub(crate) fn placeholder(f: &mut Frame, area: Rect, title: String) {
-    let block = card(title);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-    let hint = Line::styled("功能建设中，将在后续版本提供", Style::new().fg(THEME_MUTED));
-    f.render_widget(Paragraph::new(hint), inner);
-}
 
 /// 分档色：<100ms 绿 / <400ms 浅绿 / 其余黄 / 失败红。
 pub(crate) fn latency_color(tier_value: LatencyTier) -> Color {
