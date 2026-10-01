@@ -68,12 +68,15 @@ impl Iprisk {
     }
 }
 
-/// 查询 IP 风险/属性；网络失败或响应不合法为 `None`。
+/// 查询 IP 风险/属性；采用 AI 检测页的 10 秒请求边界，失败为 `None`。
 pub async fn fetch_iprisk(client: &reqwest::Client, ip: &str) -> Option<Iprisk> {
     client
         .get(format!("{API_BASE}/api/iprisk/{ip}"))
+        .timeout(std::time::Duration::from_secs(10))
         .send()
         .await
+        .ok()?
+        .error_for_status()
         .ok()?
         .json::<Iprisk>()
         .await

@@ -3,6 +3,9 @@ name = "linklens"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "network_tui"
+
 [dependencies]
 crossterm = { version = "0.29.0", features = ["event-stream"] }
 futures-util = "0.3.34"

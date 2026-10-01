@@ -5,62 +5,39 @@
 //! - 解析器列表：逐项国旗 + IP + 中文归属地（geoip）；
 //! - 底部提示：代理模式下 UDP 与系统 DNS 可能不通，TUN 模式结果才准确。
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::buffer::Buffer;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::detect::leak::DnsVerdict;
 use crate::state_leak::{DnsLeakState, DnsPhase};
 use crate::theme::color::{THEME_ACCENT, THEME_ERROR, THEME_MUTED, THEME_SUCCESS, THEME_TEXT};
 use crate::theme::icon::{self, Icon};
 use crate::theme::widget::{badge, card, kv};
-use crate::ui::layout::card_grid_columns;
 use crate::ui::mask::display_ip;
+use crate::ui::scroll::card_canvas;
 
-/// 渲染 DNS 泄漏页。
-pub fn render(f: &mut Frame, area: Rect, dns: &DnsLeakState, hide_ip: bool) {
-    let [top, list, hint] = Layout::vertical([
-        Constraint::Length(TOP_HEIGHT),
-        Constraint::Min(3),
-        Constraint::Length(1),
-    ])
-    .areas(area);
-
-    // 宽终端两卡并排，窄终端纵排
-    if card_grid_columns(area.width) >= 3 {
-        let [verdict_rect, egress_rect] =
-            Layout::horizontal([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)]).areas(top);
-        render_verdict(f, verdict_rect, dns);
-        render_egress(f, egress_rect, dns, hide_ip);
-    } else {
-        let [verdict_rect, egress_rect] = Layout::vertical([
-            Constraint::Length(TOP_HEIGHT),
-            Constraint::Length(TOP_HEIGHT),
-        ])
-        .areas(top);
-        render_verdict(f, verdict_rect, dns);
-        render_egress(f, egress_rect, dns, hide_ip);
-    }
-
-    render_resolvers(f, list, dns, hide_ip);
-    f.render_widget(
-        Paragraph::new(Line::styled(UDP_HINT, Style::new().fg(THEME_MUTED))),
-        hint,
-    );
+/// 按正文高度生成完整页面，供统一视口滚动。
+pub fn canvas(width: u16, dns: &DnsLeakState, hide_ip: bool) -> Buffer {
+    card_canvas(
+        width,
+        vec![
+            render_verdict(dns),
+            render_egress(dns, hide_ip),
+            render_resolvers(dns, hide_ip),
+            Paragraph::new(Line::styled(UDP_HINT, Style::new().fg(THEME_MUTED)))
+                .block(card("链路提示")),
+        ],
+    )
 }
 
-/// 顶部两卡高度。
-const TOP_HEIGHT: u16 = 5;
 /// 提示文案：代理模式 UDP 不通、TUN 模式才准。
 const UDP_HINT: &str = "提示：代理模式下 UDP 与系统 DNS 可能不通，结果仅供参考；TUN 模式下结果才准确。按 f 快速测试，d 深度测试";
 
 /// 结论卡：三态判定的徽章与文案。
-fn render_verdict(f: &mut Frame, area: Rect, dns: &DnsLeakState) {
+fn render_verdict(dns: &DnsLeakState) -> Paragraph<'static> {
     let block = card(icon::labeled(Icon::DnsLeak, "检测结论"));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
 
     let lines = match (dns.phase, &dns.verdict) {
         (DnsPhase::Idle, _) | (DnsPhase::Running, _) => {
@@ -111,7 +88,9 @@ fn render_verdict(f: &mut Frame, area: Rect, dns: &DnsLeakState) {
             Style::new().fg(THEME_ERROR),
         ))],
     };
-    f.render_widget(Paragraph::new(lines), inner);
+    Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
 }
 
 /// 三态判定的展示三元组（徽章文案、语义色、结论文案，照上游接口报告判定文案）。
@@ -132,10 +111,8 @@ fn verdict_display(verdict: DnsVerdict) -> (&'static str, ratatui::style::Color,
 }
 
 /// 出口参照卡：HTTP 出口 IP、归属地与国别。
-fn render_egress(f: &mut Frame, area: Rect, dns: &DnsLeakState, hide_ip: bool) {
+fn render_egress(dns: &DnsLeakState, hide_ip: bool) -> Paragraph<'static> {
     let block = card(icon::labeled(Icon::Earth, "当前出口（HTTP）"));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
 
     let lines = match &dns.egress_ip {
         Some(ip) => vec![
@@ -147,22 +124,31 @@ fn render_egress(f: &mut Frame, area: Rect, dns: &DnsLeakState, hide_ip: bool) {
             kv("国别", &dns.egress_country),
         ],
         None => vec![Line::styled(
-            "出口获取中…".to_string(),
-            Style::new().fg(THEME_MUTED),
+            match dns.phase {
+                DnsPhase::Idle => "尚未开始出口探测",
+                DnsPhase::Running => "出口获取中…",
+                DnsPhase::Done => "出口获取失败（探测失败或超时）",
+            }
+            .to_string(),
+            Style::new().fg(if dns.phase == DnsPhase::Done {
+                THEME_ERROR
+            } else {
+                THEME_MUTED
+            }),
         )],
     };
-    f.render_widget(Paragraph::new(lines), inner);
+    Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
 }
 
 /// 解析器出口列表卡：逐项国旗 + IP + 归属地。
-fn render_resolvers(f: &mut Frame, area: Rect, dns: &DnsLeakState, hide_ip: bool) {
+fn render_resolvers(dns: &DnsLeakState, hide_ip: bool) -> Paragraph<'static> {
     let title = icon::labeled(
         Icon::Server,
         &format!("DNS 解析器出口（{} 个）", dns.resolvers.len()),
     );
     let block = card(title);
-    let inner = block.inner(area);
-    f.render_widget(block, area);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     match dns.phase {
@@ -195,5 +181,7 @@ fn render_resolvers(f: &mut Frame, area: Rect, dns: &DnsLeakState, hide_ip: bool
             }
         }
     }
-    f.render_widget(Paragraph::new(lines), inner);
+    Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
 }

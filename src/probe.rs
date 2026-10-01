@@ -1,12 +1,12 @@
 //! 探测编排：后台 tokio 任务把 `net` 层探测结果写进共享状态。
 //!
 //! - `spawn_home`：应用启动即运行——国内双源出口 + Cloudflare 出口三张卡、
-//!   首页 6 目标连通小卡、37 站分流出口探测与去重汇总；
-//! - `spawn_link`：首次进入连通页时运行一次——47 目标分组连通测量。
+//!   首页 6 目标连通小卡、分流出口探测与去重汇总；
+//! - `spawn_link`：首次进入连通页时运行一次——全部目标的分组连通测量。
 //!
-//! 并发与节奏约束（票面红线）：
+//! 并发与节奏约束：
 //! - 公网探测超时一律 8 秒（`net::http` 客户端级）；
-//! - 连通计时预热 1 次 + 12 轮取中位数（`net::latency::RoundPlan`）；
+//! - 连通计时预热 1 次，首页 12 轮、连通页 8 轮取中位数（`net::latency::RoundPlan`）；
 //! - 分流并发 12、失败重试 2 次（`net::split::probe_site` 内置 2s/4s）。
 
 use futures_util::StreamExt;
@@ -80,7 +80,7 @@ pub fn spawn_home(shared: SharedState) {
     });
 }
 
-/// 启动 47 目标连通探测（首次进入连通页时调用一次；幂等）。
+/// 启动连通目标清单的探测（首次进入连通页时调用一次；幂等）。
 pub fn spawn_link(shared: SharedState) {
     let already = {
         let mut state = shared.lock();
@@ -97,7 +97,7 @@ pub fn spawn_link(shared: SharedState) {
     }
     tokio::spawn(async move {
         let probe = LatencyProbe::new();
-        // 并发池 9（接口报告约定）：每个目标独立走「预热 + 12 轮」
+        // 并发池 9（接口报告约定）：每个目标独立走「预热 + 8 轮」
         stream::iter(TARGETS.iter().enumerate())
             .for_each_concurrent(9, |(index, target)| {
                 let probe = &probe;
@@ -285,7 +285,7 @@ async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState) {
         .await;
 }
 
-/// 37 站分流：并发 12 探测 → geoip-batch 补旗 → 出口去重汇总。
+/// 分流目标清单：并发 12 探测 → geoip-batch 补旗 → 出口去重汇总。
 async fn probe_home_split(client: &reqwest::Client, shared: SharedState) {
     {
         let mut state = shared.lock();

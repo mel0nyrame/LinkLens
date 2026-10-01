@@ -268,9 +268,10 @@ mod tests {
         assert_ne!(a, b, "连续两个事务 ID 不应相同");
     }
 
-    /// 回环集成（不依赖外网）：假 STUN 服务器应答 Binding，
+    /// 手动回环冒烟（不依赖外网）：假 STUN 服务器应答 Binding，
     /// `query_stun` 应解出来源映射地址。响应由测试内独立编码。
     #[tokio::test]
+    #[ignore = "需要真实 UDP socket，手动执行回环冒烟"]
     async fn query_stun_parses_response_from_live_socket() {
         let server = tokio::net::UdpSocket::bind("127.0.0.1:0")
             .await

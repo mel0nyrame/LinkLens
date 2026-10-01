@@ -75,6 +75,8 @@ pub async fn fetch_ip138(client: &reqwest::Client) -> Option<CnSource> {
         .send()
         .await
         .ok()?
+        .error_for_status()
+        .ok()?
         .text()
         .await
         .ok()?;
@@ -87,6 +89,8 @@ pub async fn fetch_my_ip_cn(client: &reqwest::Client) -> Option<CnSource> {
         .get("https://my.ip.cn/")
         .send()
         .await
+        .ok()?
+        .error_for_status()
         .ok()?
         .text()
         .await

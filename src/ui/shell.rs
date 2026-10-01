@@ -68,22 +68,19 @@ fn render_tabs(f: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_page(f: &mut Frame, area: Rect, state: &AppState) {
-    match state.app.page {
-        Page::IpQuery => pages::ip_query::render(f, area, &state.home, state.app.hide_ip),
-        Page::Claude => pages::claude::render(f, area, state),
-        Page::Gpt => pages::gpt::render(f, area, state),
-        Page::IpScore => pages::ip_score::render(f, area, &state.score, state.app.hide_ip),
-        Page::DnsLeak => pages::dns_leak::render(f, area, &state.dns_leak, state.app.hide_ip),
-        Page::WebRtc => pages::webrtc::render(f, area, &state.webrtc, state.app.hide_ip),
-        Page::Connectivity => pages::connectivity::render(f, area, &state.link),
+    if state.app.page == Page::IpScore {
+        pages::ip_score::render(f, area, &state.score, state.app.hide_ip);
+    } else if !area.is_empty() {
+        let buffer = pages::canvas(area.width, state);
+        crate::ui::scroll::copy_viewport(&buffer, f.buffer_mut(), area, state.app.scroll_offset());
     }
 }
 
 fn render_help(f: &mut Frame, area: Rect, app: &App) {
     let help = if app.page == Page::IpScore {
-        "Tab/←→ 换页 · i 隐藏 IP · / 编辑 · Enter 查询 · r 重查 · ↑↓ 滚动 · q/Ctrl+C 退出"
+        "←→/1-7 · / 输入 · [ ] 最近 · Enter 查 · ↑↓ PgUp/PgDn Home/End · i 打码 · q 退出"
     } else {
-        "←/→ 或 h/l 顺序切换 · 1-7 直达页面 · i 切换隐藏 IP · r 重查当前 AI 检测页 · q/Esc/Ctrl+C 退出"
+        "←→/1-7 换页 · ↑↓ PgUp/PgDn Home/End · i 打码 · r 重查 · q 退出"
     };
     let mut spans = vec![Span::styled(help, Style::new().fg(THEME_MUTED))];
     if app.hide_ip {
