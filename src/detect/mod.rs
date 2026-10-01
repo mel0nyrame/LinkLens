@@ -5,5 +5,5 @@
 //! 允许依赖：`net` 与外部 crate；不得依赖 `ui`（依赖单向 ui → detect → net）。
 
 pub mod ai;
-pub mod scene;
 pub mod leak;
+pub mod scene;

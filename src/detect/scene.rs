@@ -283,19 +283,21 @@ fn assess_score(scene: Scene, mut score: u8, gate: Gate) -> SceneScore {
 /// 上游接口报告 Radar 值与缺省估算均结合本 IP 风险信号修正。
 pub fn human_percent(d: &crate::net::ip_score::Lookup, radar: Option<f64>) -> (f64, bool) {
     let radar = radar.filter(|v| v.is_finite());
+    let company_type = d.risk.company_type.to_ascii_lowercase();
+    let asn_kind = d.asn_kind.to_ascii_lowercase();
     let dc = d.risk.is_datacenter == Some(true)
-        || d.risk.company_type == "hosting"
-        || matches!(d.asn_kind.as_str(), "hosting" | "cdn");
+        || company_type == "hosting"
+        || matches!(asn_kind.as_str(), "hosting" | "cdn");
     let mut h = radar.unwrap_or_else(|| {
         if d.is_public_service {
             2.0
         } else if d.risk.is_crawler == Some(true) {
             6.0
-        } else if d.is_mobile || d.asn_kind == "mobile" {
+        } else if d.is_mobile || asn_kind == "mobile" {
             93.0
         } else if dc {
             18.0
-        } else if d.risk.company_type == "business" {
+        } else if company_type == "business" {
             65.0
         } else {
             88.0
@@ -583,5 +585,16 @@ mod tests {
             (99.0, false)
         );
         assert_eq!(super::human_percent(&d, Some(2.66)), (1.0, false));
+    }
+    #[test]
+    fn human_estimate_normalizes_network_type_case_independently_from_scene_scores() {
+        for (json, h) in [
+            (r#"{"company_type":"HOSTING"}"#, 18.0),
+            (r#"{"asn_kind":"CDN"}"#, 18.0),
+            (r#"{"asn_kind":"MOBILE"}"#, 93.0),
+            (r#"{"company_type":"BUSINESS"}"#, 65.0),
+        ] {
+            assert_eq!(super::human_percent(&fact(json), None), (h, true));
+        }
     }
 }
