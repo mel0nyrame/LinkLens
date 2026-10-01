@@ -16,7 +16,7 @@ use crate::state_score::{ScorePhase, ScoreState, Section};
 use crate::theme::color::{THEME_ACCENT, THEME_ERROR, THEME_MUTED, THEME_SUCCESS, THEME_WARNING};
 use crate::theme::icon::{self, Icon};
 use crate::theme::widget::{badge, card, kv, trust_bar};
-use crate::ui::layout::{card_grid_columns, card_rects, content_card_rects};
+use crate::ui::layout::measured_card_rects;
 use crate::ui::mask::display_ip_text;
 use crate::ui::scroll::copy_viewport;
 
@@ -36,7 +36,8 @@ impl ScoreCard {
         let icon = match self.title {
             "信任分" => Icon::Gauge,
             "AI 判词与原生/广播" => Icon::Fingerprint,
-            "IP 属性" | "同 ASN 公司" | "机房邻居" => Icon::Server,
+            "IP 属性" | "ASN / 运营商" | "同 ASN 公司" | "机房邻居" => Icon::Server,
+            "技术指标" => Icon::Network,
             "安全信号" | "DNSBL 黑名单 · 12 家" => Icon::Shield,
             "位置历史" | "ASN 历史" | "公司历史" => Icon::Clock,
             "中文归属地" | "多源定位 · g1 > g7 > g3 > g2" => Icon::Earth,
@@ -64,19 +65,13 @@ fn content_area(area: Rect, state: &ScoreState, hide_ip: bool) -> Rect {
 }
 
 fn geometry(width: u16, cards: &[ScoreCard]) -> (Vec<Rect>, u16) {
-    let columns = usize::from(card_grid_columns(width));
-    let slots = card_rects(Rect::new(0, 0, width, 1), columns);
-    let heights = cards
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            c.paragraph()
-                .line_count(slots[i % columns].width.saturating_sub(4).max(1))
-                .saturating_add(2)
-                .min(usize::from(u16::MAX)) as u16
-        })
-        .collect::<Vec<_>>();
-    content_card_rects(width, &heights)
+    measured_card_rects(width, cards.len(), |i, card_width| {
+        cards[i]
+            .paragraph()
+            .line_count(card_width.saturating_sub(4).max(1))
+            .saturating_add(2)
+            .min(usize::from(u16::MAX)) as u16
+    })
 }
 
 pub fn max_scroll(area: Rect, state: &ScoreState, hide_ip: bool) -> u16 {
@@ -455,13 +450,17 @@ fn deep_cards(out: &mut Vec<ScoreCard>, d: &Lookup) {
         "信任分按网段聚合，段代表 IP 可能与查询 IP 不同",
         THEME_MUTED,
     ));
-    append_value(&mut trust, "地址范围", &d.range);
     out.push(ScoreCard::new("信任分", trust));
     let mut attributes = vec![
         kv("资料来源", &d.src),
         kv("属性", d.risk.property_badge().unwrap_or("未知")),
         kv("公司", &d.risk.company_name),
         kv("公司类型", &d.risk.company_type),
+        kv("地区", &d.risk.region),
+        kv("城市", &d.risk.city),
+        kv("机房", &d.datacenter_name),
+    ];
+    let mut asn = vec![
         kv(
             "ASN",
             &d.risk
@@ -475,15 +474,14 @@ fn deep_cards(out: &mut Vec<ScoreCard>, d: &Lookup) {
         kv("ASN 带宽", &d.asn_tbps),
         kv("ASN 分配日", &d.asn_allocated),
         kv("ISP", &d.isp),
-        kv("地区", &d.risk.region),
-        kv("城市", &d.risk.city),
-        kv("机房", &d.datacenter_name),
-        kv("反向 DNS", &d.rdns),
-        kv("RPKI", &d.rpki_status),
     ];
     if let Some(n) = d.asn_ipv4_count {
-        attributes.push(kv("ASN IPv4 数量", &n.to_string()));
+        asn.push(kv("ASN IPv4 数量", &n.to_string()));
     }
+    out.push(ScoreCard::new("ASN / 运营商", asn));
+    let mut technical = vec![kv("反向 DNS", &d.rdns), kv("RPKI", &d.rpki_status)];
+    append_value(&mut technical, "地址范围", &d.range);
+    out.push(ScoreCard::new("技术指标", technical));
     for (name, value) in [
         ("机房", d.risk.is_datacenter),
         ("家庭宽带", d.risk.is_residential),

@@ -1,13 +1,15 @@
-//! 应用状态与键位导航：页面切换、隐藏 IP 开关、AI 页重查、退出。
+//! 应用状态与输入导航：页面切换、隐藏 IP 开关、重查、滚动与退出。
 //!
 //! 键位约定：`1`-`7` 直达页面，`←`/`→`（或 `h`/`l`、`Tab`/`Shift+Tab`）顺序循环，
-//! `i` 切换隐藏 IP 打码，`r` 在 Claude/GPT 检测页重查，`q`/`Esc`/`Ctrl+C` 退出。
+//! `i` 切换隐藏 IP 打码，`r` 在 Claude/GPT 和网络连通页重查，`q`/`Esc`/`Ctrl+C` 退出。
 //! 评分页输入焦点先行消费按键，再回落到此层。
 //! 隐藏 IP 是全局开关：影响所有页面的 IP 显示。
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use futures_util::StreamExt;
-use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
+use ratatui::crossterm::event::{
+    DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyEventKind,
+};
 
 use crate::theme::icon::Icon;
 use crate::ui;
@@ -83,14 +85,14 @@ impl Page {
     }
 }
 
-/// 应用状态：当前页面、隐藏 IP 开关、AI 页重查请求与退出标记。
+/// 应用状态：当前页面、隐藏 IP 开关、页面重查请求与退出标记。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct App {
     pub page: Page,
     /// 隐藏 IP 开关：开启后界面所有 IP 打码显示（方便截图分享）。
     pub hide_ip: bool,
-    /// `r` 键置位的重查请求（仅 Claude/GPT 页），事件循环消费后复位。
-    pub ai_refresh: bool,
+    /// `r` 键置位的重查请求（Claude/GPT 与网络连通页），事件循环消费后复位。
+    pub refresh_requested: bool,
     pub should_quit: bool,
     /// 各页独立保存垂直位置；评分页由其输入与查询状态持有滚动位置。
     pub scroll: [u16; 7],
@@ -127,8 +129,10 @@ impl App {
                 self.should_quit = true
             }
             KeyCode::Char('i') => self.hide_ip = !self.hide_ip,
-            KeyCode::Char('r') if matches!(self.page, Page::Claude | Page::Gpt) => {
-                self.ai_refresh = true;
+            KeyCode::Char('r')
+                if matches!(self.page, Page::Claude | Page::Gpt | Page::Connectivity) =>
+            {
+                self.refresh_requested = true;
             }
             KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => {
                 self.page = self.page.previous();
@@ -144,27 +148,39 @@ impl App {
     }
 }
 
-/// 运行终端应用：初始化终端、启动后台探测、事件循环、恢复终端。
-///
-/// 无论循环以何种方式结束（正常退出、绘制或读取事件失败）都会恢复终端状态；
-/// panic 时的恢复由 `ratatui::try_init` 安装的钩子负责。
-/// 探测任务通过共享状态 + 通知驱动重绘：键位事件与数据更新都会唤醒循环。
+struct MouseCapture;
+
+impl Drop for MouseCapture {
+    fn drop(&mut self) {
+        let _ = crossterm::execute!(std::io::stdout(), DisableMouseCapture);
+    }
+}
+
+/// 运行终端应用；输入事件与数据更新唤醒重绘，退出与 panic 时恢复终端和鼠标模式。
 pub async fn run() -> std::io::Result<()> {
     let mut terminal = ratatui::try_init()?;
+    let _mouse_capture = MouseCapture;
+    if let Err(error) = crossterm::execute!(std::io::stdout(), EnableMouseCapture) {
+        let _ = ratatui::try_restore();
+        return Err(error);
+    }
     let mut events = EventStream::new();
     let shared = state::SharedState::new();
     probe::spawn_home(shared.clone());
-    let mut link_spawned = false;
+    let mut link_task = None;
     let mut webrtc_spawned = false;
 
     let result = loop {
         if shared.lock().app.should_quit {
             break Ok(());
         }
-        // 首次进入连通页时启动全部目标测量（仅一次）
-        if !link_spawned && shared.lock().app.page == Page::Connectivity {
-            probe::spawn_link(shared.clone());
-            link_spawned = true;
+        // 首次进入连通页时启动全部目标测量。
+        let start_link = {
+            let snapshot = shared.lock();
+            snapshot.app.page == Page::Connectivity && !snapshot.link.started
+        };
+        if start_link {
+            link_task = probe::spawn_link(shared.clone(), false);
         }
         // 首次进入 WebRTC 页时启动 STUN 探测（仅一次）
         if !webrtc_spawned && shared.lock().app.page == Page::WebRtc {
@@ -176,19 +192,26 @@ pub async fn run() -> std::io::Result<()> {
         probe_ai::spawn_for_page_if_needed(shared.clone());
         probe_score::spawn_for_page_if_needed(shared.clone());
 
-        // `r` 键重查当前 AI 检测页
+        // `r` 键重查当前 AI 或连通页
         let refresh_page = {
             let mut snapshot = shared.lock();
             let page = snapshot.app.page;
-            if snapshot.app.ai_refresh {
-                snapshot.app.ai_refresh = false;
+            if snapshot.app.refresh_requested {
+                snapshot.app.refresh_requested = false;
                 Some(page)
             } else {
                 None
             }
         };
         if let Some(page) = refresh_page {
-            probe_ai::request_refresh(&shared, page);
+            if page == Page::Connectivity {
+                if let Some(task) = link_task.take() {
+                    task.abort();
+                }
+                link_task = probe::spawn_link(shared.clone(), true);
+            } else {
+                probe_ai::request_refresh(&shared, page);
+            }
         }
 
         {
@@ -232,6 +255,22 @@ pub async fn run() -> std::io::Result<()> {
                             shared.lock().app.handle_key(key.code, key.modifiers);
                         }
                     }
+                    Some(Ok(Event::Mouse(mouse))) => {
+                        let mut snapshot = shared.lock();
+                        let content = ui::shell::content_area(terminal.get_frame().area());
+                        if snapshot.app.page == Page::IpScore {
+                            let max = ui::pages::ip_score::max_scroll(content, &snapshot.score, snapshot.app.hide_ip);
+                            if let Some(scroll) = ui::scroll::mouse_scroll(snapshot.score.scroll, mouse.kind, max) {
+                                snapshot.score.scroll = scroll;
+                            }
+                        } else {
+                            let max = ui::pages::max_scroll(content, &snapshot);
+                            if let Some(scroll) = ui::scroll::mouse_scroll(snapshot.app.scroll_offset(), mouse.kind, max) {
+                                let page = snapshot.app.page.position();
+                                snapshot.app.scroll[page] = scroll;
+                            }
+                        }
+                    }
                     Some(Ok(_)) => {}
                     Some(Err(err)) => break Err(err),
                     None => break Ok(()),
@@ -249,6 +288,16 @@ pub async fn run() -> std::io::Result<()> {
 mod tests {
     use super::{App, Page};
     use crossterm::event::{KeyCode, KeyModifiers};
+
+    #[test]
+    fn regression_connectivity_r_requests_a_new_probe() {
+        let mut app = App {
+            page: Page::Connectivity,
+            ..App::default()
+        };
+        app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(app.refresh_requested, "网络连通页 r 必须提交重测请求");
+    }
 
     #[test]
     fn seven_pages_in_fixed_order() {
@@ -354,19 +403,19 @@ mod tests {
     }
 
     #[test]
-    fn r_key_requests_ai_refresh_on_ai_pages_only() {
+    fn r_key_requests_refresh_on_ai_and_connectivity_pages() {
         for page in [Page::Claude, Page::Gpt] {
             let mut app = App {
                 page,
                 ..App::default()
             };
             app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
-            assert!(app.ai_refresh, "{page:?} 页 r 应请求重查");
+            assert!(app.refresh_requested, "{page:?} 页 r 应请求重查");
         }
-        // 非 AI 页不置位，也不影响其他行为
+        // 首页不请求重查，也不影响其他行为。
         let mut app = App::default();
         app.handle_key(KeyCode::Char('r'), KeyModifiers::NONE);
-        assert!(!app.ai_refresh, "非 AI 页 r 不置位");
+        assert!(!app.refresh_requested, "首页 r 不置位");
         assert!(!app.should_quit);
         assert_eq!(app.page, Page::IpQuery);
     }

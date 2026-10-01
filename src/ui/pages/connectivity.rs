@@ -43,7 +43,7 @@ pub fn canvas(width: u16, link: &LinkState) -> Buffer {
         .enumerate()
         .map(|(i, group)| group_card(column_width, i, group.flag, group.name, link))
         .collect();
-    let mut y = 0u16;
+    let mut y = 1u16;
     let mut rects = Vec::new();
     for row in cards.chunks(usize::from(columns)) {
         let height = row
@@ -63,6 +63,15 @@ pub fn canvas(width: u16, link: &LinkState) -> Buffer {
         y = y.saturating_add(height).saturating_add(1);
     }
     let mut buffer = Buffer::empty(Rect::new(0, 0, width, y.saturating_sub(1)));
+    let completed = link.targets.iter().filter(|t| t.done).count();
+    Paragraph::new(format!(
+        "第 {} 次测量 · {}/{} 已完成 · r 从头重测",
+        link.generation,
+        completed,
+        TARGETS.len()
+    ))
+    .style(Style::new().fg(THEME_TEXT))
+    .render(Rect::new(0, 0, width, 1), &mut buffer);
     for (paragraph, rect) in cards.into_iter().zip(rects) {
         paragraph.render(rect, &mut buffer);
     }

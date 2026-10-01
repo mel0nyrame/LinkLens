@@ -43,22 +43,57 @@ pub fn card_rects(area: Rect, count: usize) -> Vec<Rect> {
         .collect()
 }
 
-/// 按内容所需高度排列卡片；同行取最大高度，返回完整画布高度。
+/// 宽屏按内容高度分组；窄屏保持原顺序。返回的矩形仍与输入一一对应。
 pub fn content_card_rects(width: u16, heights: &[u16]) -> (Vec<Rect>, u16) {
+    measured_card_rects(width, heights.len(), |index, _| heights[index])
+}
+
+/// 先在标准列宽下比较信息密度，再以每行实际列宽测量，避免换行与空白估算失真。
+pub fn measured_card_rects(
+    width: u16,
+    count: usize,
+    mut measure: impl FnMut(usize, u16) -> u16,
+) -> (Vec<Rect>, u16) {
     let cols = usize::from(card_grid_columns(width));
-    let slots = card_rects(Rect::new(0, 0, width, 1), cols);
+    let standard_width = split_lengths(width, cols)
+        .into_iter()
+        .min()
+        .unwrap_or(width);
+    let heights: Vec<_> = (0..count).map(|i| measure(i, standard_width)).collect();
+    let mut remaining: Vec<_> = (0..count).collect();
     let mut y = 0u16;
-    let mut rects = Vec::with_capacity(heights.len());
-    for row in heights.chunks(cols) {
-        let height = row.iter().copied().max().unwrap_or(0);
-        for (col, _) in row.iter().enumerate() {
-            rects.push(Rect::new(slots[col].x, y, slots[col].width, height));
+    let mut rects = vec![Rect::default(); count];
+    while !remaining.is_empty() {
+        let first = remaining.remove(0);
+        let mut row = vec![first];
+        let mut min_height = heights[first];
+        let mut max_height = heights[first];
+        let mut candidate = 0;
+        while candidate < remaining.len() && row.len() < cols {
+            let index = remaining[candidate];
+            let min = min_height.min(heights[index]);
+            let max = max_height.max(heights[index]);
+            if max.saturating_sub(min) <= (min / 3).max(2) {
+                row.push(remaining.remove(candidate));
+                min_height = min;
+                max_height = max;
+            } else {
+                candidate += 1;
+            }
+        }
+        let widths = split_lengths(width, row.len());
+        let xs = offsets(&widths, CARD_GAP);
+        let mut height = 0;
+        for (col, &index) in row.iter().enumerate() {
+            let card_height = measure(index, widths[col]);
+            rects[index] = Rect::new(xs[col], y, widths[col], card_height);
+            height = height.max(card_height);
         }
         y = y.saturating_add(height).saturating_add(CARD_GAP);
     }
     (
         rects,
-        y.saturating_sub(if heights.is_empty() { 0 } else { CARD_GAP }),
+        y.saturating_sub(if count == 0 { 0 } else { CARD_GAP }),
     )
 }
 
@@ -97,18 +132,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scrolling_grid_keeps_entire_tallest_card_and_places_next_row_after_it() {
+    fn regression_cards_with_similar_density_share_a_row() {
+        let (rects, _) = content_card_rects(120, &[9, 14, 35, 10, 13, 34]);
+        assert_eq!(rects[0].y, rects[3].y, "短卡片应放在一起");
+        assert_eq!(rects[2].y, rects[5].y, "长卡片应放在一起");
+        for (rect, height) in rects.iter().zip([9, 14, 35, 10, 13, 34]) {
+            assert!(
+                rect.height <= height + 5,
+                "短卡片不应被长卡片撑出大量空白: {rect:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn scrolling_grid_keeps_cards_compact_and_preserves_input_indices() {
         let (rects, height) = content_card_rects(100, &[5, 20, 7, 4]);
         assert_eq!(
-            rects,
-            vec![
-                Rect::new(0, 0, 33, 20),
-                Rect::new(34, 0, 33, 20),
-                Rect::new(68, 0, 32, 20),
-                Rect::new(0, 21, 33, 4)
-            ]
+            rects.iter().map(|r| r.height).collect::<Vec<_>>(),
+            [5, 20, 7, 4]
         );
-        assert_eq!(height, 25);
+        assert_eq!(rects[0].y, rects[2].y);
+        assert!(rects[1].y >= rects[0].bottom().max(rects[2].bottom()));
+        assert!(rects.iter().all(|r| r.bottom() <= height));
+    }
+
+    #[test]
+    fn density_layout_remeasures_at_expanded_width_and_never_overlaps() {
+        let (rects, total) = measured_card_rects(120, 4, |i, width| {
+            [8u16, 9, 10, 250][i].div_ceil(width.saturating_sub(4).max(1)) + 2
+        });
+        for a in &rects {
+            assert!(a.right() <= 120 && a.bottom() <= total);
+            for b in &rects {
+                if a != b {
+                    assert!(a.intersection(*b).is_empty());
+                }
+            }
+        }
+        assert_eq!(rects[3].width, 120);
+        assert_eq!(rects[3].height, 5);
+    }
+
+    #[test]
+    fn density_layout_preserves_narrow_screen_order_and_handles_empty_input() {
+        let (rects, _) = content_card_rects(80, &[9, 35, 10]);
+        assert!(rects[0].y < rects[1].y && rects[1].y < rects[2].y);
+        assert!(rects.iter().all(|r| r.width == 80));
+        assert_eq!(content_card_rects(0, &[]), (Vec::new(), 0));
     }
 
     #[test]

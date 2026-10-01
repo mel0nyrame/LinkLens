@@ -108,13 +108,74 @@ impl HomeState {
     }
 }
 
-/// 47 目标连通页状态。
+/// 全部目标的连通测量状态。
 #[derive(Clone, Debug, Default)]
 pub struct LinkState {
-    /// 探测是否已启动（进入页面时触发一次）。
+    /// 首次进入页面时启动；重测保留此标记。
     pub started: bool,
+    /// 新一轮递增，迟到的旧轮次结果不得写入当前测量。
+    pub generation: u64,
     /// 目标进度（顺序与 `net::targets::TARGETS` 对齐）。
     pub targets: Vec<LatencyState>,
+}
+
+impl LinkState {
+    pub fn begin_probe(&mut self, refresh: bool) -> Option<u64> {
+        if self.started && !refresh {
+            return None;
+        }
+        self.started = true;
+        self.generation += 1;
+        self.targets = crate::net::targets::TARGETS
+            .iter()
+            .map(|t| LatencyState::new(t.name))
+            .collect();
+        Some(self.generation)
+    }
+
+    pub fn push_round(&mut self, generation: u64, index: usize, result: RoundResult) -> bool {
+        if generation != self.generation {
+            return false;
+        }
+        self.targets[index].push_round(result);
+        true
+    }
+
+    pub fn finish_target(&mut self, generation: u64, index: usize) -> bool {
+        if generation != self.generation {
+            return false;
+        }
+        self.targets[index].done = true;
+        true
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::LinkState;
+
+    #[test]
+    fn refresh_clears_rounds_and_rejects_late_results() {
+        let mut state = LinkState::default();
+        let first = state.begin_probe(false).unwrap();
+        state.push_round(first, 0, Some(42));
+        state.finish_target(first, 0);
+        assert_eq!(state.begin_probe(false), None);
+        let second = state.begin_probe(true).unwrap();
+        assert!(
+            state
+                .targets
+                .iter()
+                .all(|t| t.rounds.is_empty() && t.median.is_none() && !t.done)
+        );
+        assert!(!state.push_round(first, 0, Some(99)));
+        assert!(!state.finish_target(first, 0));
+        assert!(state.push_round(second, 0, Some(7)));
+        assert_eq!(state.targets[0].median, Some(7));
+        let third = state.begin_probe(true).unwrap();
+        assert!(!state.push_round(second, 0, Some(42)));
+        assert!(state.finish_target(third, 0));
+    }
 }
 
 /// 整个应用的状态：键位状态 + 首页 + 连通页 + AI 检测页 + 泄漏检测两页。

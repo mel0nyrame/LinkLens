@@ -2,7 +2,7 @@
 //!
 //! - `spawn_home`：应用启动即运行——国内双源出口 + Cloudflare 出口三张卡、
 //!   首页 6 目标连通小卡、分流出口探测与去重汇总；
-//! - `spawn_link`：首次进入连通页时运行一次——全部目标的分组连通测量。
+//! - `spawn_link`：首次进入连通页或重测时启动全部目标的分组连通测量。
 //!
 //! 并发与节奏约束：
 //! - 公网探测超时一律 8 秒（`net::http` 客户端级）；
@@ -80,22 +80,10 @@ pub fn spawn_home(shared: SharedState) {
     });
 }
 
-/// 启动连通目标清单的探测（首次进入连通页时调用一次；幂等）。
-pub fn spawn_link(shared: SharedState) {
-    let already = {
-        let mut state = shared.lock();
-        if state.link.started {
-            true
-        } else {
-            state.link.started = true;
-            state.link.targets = TARGETS.iter().map(|t| LatencyState::new(t.name)).collect();
-            false
-        }
-    };
-    if already {
-        return;
-    }
-    tokio::spawn(async move {
+/// 认领新测量；普通进入幂等，显式重测清空全部目标进度。
+pub fn spawn_link(shared: SharedState, refresh: bool) -> Option<tokio::task::JoinHandle<()>> {
+    let generation = shared.lock().link.begin_probe(refresh)?;
+    Some(tokio::spawn(async move {
         let probe = LatencyProbe::new();
         // 并发池 9（接口报告约定）：每个目标独立走「预热 + 8 轮」
         stream::iter(TARGETS.iter().enumerate())
@@ -105,20 +93,24 @@ pub fn spawn_link(shared: SharedState) {
                 async move {
                     let on_round = |result| {
                         let mut state = shared.lock();
-                        state.link.targets[index].push_round(result);
+                        let changed = state.link.push_round(generation, index, result);
                         drop(state);
-                        shared.notify();
+                        if changed {
+                            shared.notify();
+                        }
                     };
                     probe_rounds(|| probe.measure_url(target.url), &RoundPlan::LINK, on_round)
                         .await;
                     let mut state = shared.lock();
-                    state.link.targets[index].done = true;
+                    let changed = state.link.finish_target(generation, index);
                     drop(state);
-                    shared.notify();
+                    if changed {
+                        shared.notify();
+                    }
                 }
             })
             .await;
-    });
+    }))
 }
 
 /// 首页出口三卡：国内双源（主/备）+ Cloudflare 出口。
