@@ -1,12 +1,20 @@
-//! Claude 检测页（空壳）。
+//! Claude 检测页：共用 AI 框架的 Claude 参数化实例。
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use crate::theme::icon::{self, Icon};
+use crate::probe_ai::CLAUDE_PROFILE;
+use crate::state::AppState;
 
-use super::placeholder;
+use super::ai;
 
-pub fn render(f: &mut Frame, area: Rect) {
-    placeholder(f, area, icon::labeled(Icon::Claude, "Claude 检测"));
+pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
+    ai::render(
+        f,
+        area,
+        &CLAUDE_PROFILE,
+        &state.ai.claude,
+        &state.home,
+        state.app.hide_ip,
+    );
 }

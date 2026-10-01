@@ -265,15 +265,19 @@ mod tests {
 
     #[test]
     fn availability_targets_match_site() {
-        assert!(CLAUDE_PROFILE
-            .availability_targets
-            .iter()
-            .any(|(_, url)| url.contains("anthropic.com")));
+        assert!(
+            CLAUDE_PROFILE
+                .availability_targets
+                .iter()
+                .any(|(_, url)| url.contains("anthropic.com"))
+        );
         // GPT 探测目标含 api.openai.com（Codex/API 链路提示）
-        assert!(GPT_PROFILE
-            .availability_targets
-            .iter()
-            .any(|(_, url)| url.contains("api.openai.com")));
+        assert!(
+            GPT_PROFILE
+                .availability_targets
+                .iter()
+                .any(|(_, url)| url.contains("api.openai.com"))
+        );
     }
 
     #[test]
@@ -282,7 +286,10 @@ mod tests {
         //（绝对路径前缀反映用户克隆位置，与本约束无关）
         for tag in [CLAUDE_PROFILE.history_tag, GPT_PROFILE.history_tag] {
             let path = history::history_path(tag);
-            let file = path.file_name().expect("历史路径应有文件名").to_string_lossy();
+            let file = path
+                .file_name()
+                .expect("历史路径应有文件名")
+                .to_string_lossy();
             assert!(!file.contains("linklens"), "历史文件名 {file} 焊死了项目名");
             assert_eq!(file, format!("{tag}-history.json"));
             let parent = path
@@ -296,7 +303,10 @@ mod tests {
 
     #[test]
     fn profile_for_maps_only_ai_pages() {
-        assert_eq!(profile_for(Page::Claude).map(|p| p.page), Some(Page::Claude));
+        assert_eq!(
+            profile_for(Page::Claude).map(|p| p.page),
+            Some(Page::Claude)
+        );
         assert_eq!(profile_for(Page::Gpt).map(|p| p.page), Some(Page::Gpt));
         for other in [Page::IpQuery, Page::IpScore, Page::DnsLeak] {
             assert!(profile_for(other).is_none());
@@ -337,7 +347,11 @@ mod tests {
             panic!("编排应在时限内完成");
         };
         assert!(
-            outcome.exit.as_ref().and_then(|t| t.ip.as_deref()).is_some(),
+            outcome
+                .exit
+                .as_ref()
+                .and_then(|t| t.ip.as_deref())
+                .is_some(),
             "claude.ai trace 应给出出口 IP"
         );
     }

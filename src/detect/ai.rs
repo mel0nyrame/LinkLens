@@ -146,7 +146,9 @@ pub fn resolve_exit_country(geo: Option<&GeoIp>, trace_loc: Option<&str>) -> Opt
 
 /// trace `loc=` 兜底时的中文国名（内置国别码映射，复用 net 层中文国名表）；表外为空串。
 pub fn fallback_location_text(code: &str) -> String {
-    crate::net::cc::cn_name(&code.to_lowercase()).unwrap_or("").to_string()
+    crate::net::cc::cn_name(&code.to_lowercase())
+        .unwrap_or("")
+        .to_string()
 }
 
 /// 服务状态级别（status.json 的 `overall_indicator`）。
@@ -284,7 +286,10 @@ mod tests {
 
     #[test]
     fn best_latency_takes_minimum_success() {
-        assert_eq!(best_latency(&[Some(300), None, Some(180), Some(260)]), Some(180));
+        assert_eq!(
+            best_latency(&[Some(300), None, Some(180), Some(260)]),
+            Some(180)
+        );
         assert_eq!(best_latency(&[None, None]), None);
         assert_eq!(best_latency(&[]), None);
         assert_eq!(best_latency(&[Some(42)]), Some(42));

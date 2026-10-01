@@ -43,11 +43,7 @@ pub fn record(
     {
         return existing.to_vec();
     }
-    let mut entries: Vec<HistoryEntry> = existing
-        .iter()
-        .filter(|e| e.ip != ip)
-        .cloned()
-        .collect();
+    let mut entries: Vec<HistoryEntry> = existing.iter().filter(|e| e.ip != ip).cloned().collect();
     entries.insert(
         0,
         HistoryEntry {
@@ -153,7 +149,10 @@ pub fn save(path: &Path, entries: &[HistoryEntry]) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEDUP_WINDOW_MS, HistoryEntry, MAX_ENTRIES, entries_from_json, entries_to_json, format_recorded_at, record};
+    use super::{
+        DEDUP_WINDOW_MS, HistoryEntry, MAX_ENTRIES, entries_from_json, entries_to_json,
+        format_recorded_at, record,
+    };
 
     fn entry(ip: &str, at_ms: u64) -> HistoryEntry {
         HistoryEntry {

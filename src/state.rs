@@ -8,9 +8,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::sync::Notify;
 
 use crate::app::App;
-use crate::state_ai::AiState;
 use crate::net::latency::{LatencyTier, RoundResult, tier};
 use crate::net::split::SplitExit;
+use crate::state_ai::AiState;
 
 /// 首页一张出口 IP 卡的内容。
 #[derive(Clone, Debug, Default)]

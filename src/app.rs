@@ -105,9 +105,7 @@ impl App {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => self.should_quit = true,
             KeyCode::Char('i') => self.hide_ip = !self.hide_ip,
-            KeyCode::Char('r')
-                if matches!(self.page, Page::Claude | Page::Gpt) =>
-            {
+            KeyCode::Char('r') if matches!(self.page, Page::Claude | Page::Gpt) => {
                 self.ai_refresh = true;
             }
             KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => {
