@@ -182,6 +182,20 @@ async fn run_query(
             return;
         }
     };
+    // 上游接口报告遇到 bogon 仅显示非公网提示，避免100分缓存记录暗示公网可用。
+    if data.is_bogon {
+        update(shared, generation, |s| {
+            s.lookup = Section::Ready(Box::new(data));
+            s.related = Section::Unsupported;
+            s.heat = Section::Unsupported;
+            s.bgp = Section::Unsupported;
+            s.dnsbl = Section::Unsupported;
+            s.radar = Section::Unsupported;
+            s.companies = Section::Unsupported;
+            s.phase = ScorePhase::Done;
+        });
+        return;
+    }
     let asn = data.risk.asn;
     let pending = data.related_domains_pending;
     if !update(shared, generation, |s| {

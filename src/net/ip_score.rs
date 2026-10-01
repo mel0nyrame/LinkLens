@@ -160,7 +160,15 @@ pub fn decode_response<T: serde::de::DeserializeOwned>(
             Some(status),
         ));
     }
-    serde_json::from_str(body).map_err(|_| ApiError::new(format!("{endpoint}响应格式不合法")))
+    let value: Value = serde_json::from_str(body)
+        .map_err(|_| ApiError::new(format!("{endpoint}响应格式不合法")))?;
+    if value
+        .get("error")
+        .is_some_and(|error| !error.is_null() && error != false && error != "")
+    {
+        return Err(ApiError::new(format!("{endpoint}上游数据暂不可用")));
+    }
+    serde_json::from_value(value).map_err(|_| ApiError::new(format!("{endpoint}响应格式不合法")))
 }
 
 /// 独立 API 时限（上游接口报告深度45s、增强14-22s），覆盖共用客户端的8s公网探测时限。
@@ -187,10 +195,16 @@ pub async fn fetch<T: serde::de::DeserializeOwned>(
             ))
         })?;
     let status = response.status().as_u16();
-    let body = response
-        .text()
-        .await
-        .map_err(|_| ApiError::new(format!("{endpoint}响应读取失败")))?;
+    let body = response.text().await.map_err(|error| {
+        ApiError::new(format!(
+            "{endpoint}{}",
+            if error.is_timeout() {
+                "超时"
+            } else {
+                "响应读取失败"
+            }
+        ))
+    })?;
     decode_response(endpoint, status, &body)
 }
 
@@ -441,5 +455,12 @@ mod tests {
         assert_eq!(d.risk.asn, None);
         assert_eq!(d.best_coordinates(), None);
         assert_eq!(d.src, "g0");
+    }
+    #[test]
+    fn upstream_error_payload_is_not_accepted_as_an_empty_lookup() {
+        let err = decode_response::<Lookup>("深度查询", 200, r#"{"error":"upstream unavailable"}"#)
+            .unwrap_err();
+        assert!(err.0.contains("上游"));
+        assert_eq!(err.status(), None);
     }
 }
