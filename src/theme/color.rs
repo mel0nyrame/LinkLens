@@ -7,6 +7,8 @@ use ratatui::style::Color;
 
 /// 结论 / 通过 / 纯净。
 pub const THEME_SUCCESS: Color = Color::Rgb(0x4a, 0xde, 0x80);
+/// 较快但非最优（连通「良好」档浅绿）。
+pub const THEME_SUCCESS_SOFT: Color = Color::Rgb(0x6f, 0xcf, 0x7c);
 /// 警示 / 冷却 / 配额紧张。
 pub const THEME_WARNING: Color = Color::Rgb(0xfa, 0xcc, 0x15);
 /// 错误 / 泄漏 / 高危。
@@ -98,6 +100,15 @@ mod tests {
                 assert_ne!(a, b);
             }
         }
+    }
+
+    #[test]
+    fn soft_success_shade_is_pinned_and_distinct() {
+        // 连通「良好」档浅绿（活站 #6fcf7c），区别于满速绿与警示黄
+        assert_eq!(THEME_SUCCESS_SOFT, Color::Rgb(0x6f, 0xcf, 0x7c));
+        assert_ne!(THEME_SUCCESS_SOFT, THEME_SUCCESS);
+        assert_ne!(THEME_SUCCESS_SOFT, THEME_WARNING);
+        assert_ne!(THEME_SUCCESS_SOFT, THEME_MUTED);
     }
 
     #[test]

@@ -1,7 +1,8 @@
-//! 应用状态与键位导航：页面切换、退出。
+//! 应用状态与键位导航：页面切换、隐藏 IP 开关、退出。
 //!
 //! 键位约定：`1`-`7` 直达页面，`←`/`→`（或 `h`/`l`、`Tab`/`Shift+Tab`）顺序循环，
-//! `q`/`Esc`/`Ctrl+C` 退出。带输入框的页面在后续票中先行消费按键，再回落到此层。
+//! `i` 切换隐藏 IP 打码，`q`/`Esc`/`Ctrl+C` 退出。带输入框的页面在后续票中
+//! 先行消费按键，再回落到此层。隐藏 IP 是全局开关：影响所有页面的 IP 显示。
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use futures_util::StreamExt;
@@ -9,6 +10,7 @@ use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
 
 use crate::theme::icon::Icon;
 use crate::ui;
+use crate::{probe, state};
 
 /// 七个功能页，顺序即导航顺序，也是数字键 `1`-`7` 的直达目标。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -80,10 +82,12 @@ impl Page {
     }
 }
 
-/// 应用状态：当前页面与退出标记。
+/// 应用状态：当前页面、隐藏 IP 开关与退出标记。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct App {
     pub page: Page,
+    /// 隐藏 IP 开关：开启后界面所有 IP 打码显示（方便截图分享）。
+    pub hide_ip: bool,
     pub should_quit: bool,
 }
 
@@ -97,6 +101,7 @@ impl App {
         match code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => self.should_quit = true,
+            KeyCode::Char('i') => self.hide_ip = !self.hide_ip,
             KeyCode::Left | KeyCode::Char('h') | KeyCode::BackTab => {
                 self.page = self.page.previous();
             }
@@ -111,39 +116,49 @@ impl App {
     }
 }
 
-/// 运行终端应用：初始化终端、事件循环、恢复终端。
+/// 运行终端应用：初始化终端、启动后台探测、事件循环、恢复终端。
 ///
 /// 无论循环以何种方式结束（正常退出、绘制或读取事件失败）都会恢复终端状态；
 /// panic 时的恢复由 `ratatui::try_init` 安装的钩子负责。
+/// 探测任务通过共享状态 + 通知驱动重绘：键位事件与数据更新都会唤醒循环。
 pub async fn run() -> std::io::Result<()> {
     let mut terminal = ratatui::try_init()?;
     let mut events = EventStream::new();
-    let mut app = App::default();
-    let mut io_error = None;
+    let shared = state::SharedState::new();
+    probe::spawn_home(shared.clone());
+    let mut link_spawned = false;
 
-    while !app.should_quit {
-        if let Err(err) = terminal.draw(|f| ui::shell::render(f, &app)) {
-            io_error = Some(err);
-            break;
+    let result = loop {
+        // 首次进入连通页时启动 47 目标测量（仅一次）
+        if !link_spawned && shared.lock().app.page == Page::Connectivity {
+            probe::spawn_link(shared.clone());
+            link_spawned = true;
         }
-        match events.next().await {
-            Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
-                app.handle_key(key.code, key.modifiers);
+
+        {
+            let snapshot = shared.lock();
+            if let Err(err) = terminal.draw(|f| ui::shell::render(f, &snapshot)) {
+                break Err(err);
             }
-            Some(Ok(_)) => {}
-            Some(Err(err)) => {
-                io_error = Some(err);
-                break;
-            }
-            None => break,
         }
-    }
+
+        tokio::select! {
+            event = events.next() => {
+                match event {
+                    Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
+                        shared.lock().app.handle_key(key.code, key.modifiers);
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(err)) => break Err(err),
+                    None => break Ok(()),
+                }
+            }
+            _ = shared.changed() => {}
+        }
+    };
 
     let _ = ratatui::try_restore();
-    match io_error {
-        Some(err) => Err(err),
-        None => Ok(()),
-    }
+    result
 }
 
 #[cfg(test)]
@@ -240,5 +255,17 @@ mod tests {
         app.handle_key(KeyCode::Char('c'), KeyModifiers::NONE);
         assert!(!app.should_quit);
         assert_eq!(app.page, Page::IpQuery);
+    }
+
+    #[test]
+    fn i_key_toggles_ip_masking_without_changing_page() {
+        let mut app = App::default();
+        assert!(!app.hide_ip, "默认不打码");
+        app.handle_key(KeyCode::Char('i'), KeyModifiers::NONE);
+        assert!(app.hide_ip);
+        assert_eq!(app.page, Page::IpQuery);
+        assert!(!app.should_quit);
+        app.handle_key(KeyCode::Char('i'), KeyModifiers::NONE);
+        assert!(!app.hide_ip);
     }
 }
