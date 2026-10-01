@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::sync::Notify;
 
 use crate::app::App;
+use crate::state_ai::AiState;
 use crate::net::latency::{LatencyTier, RoundResult, tier};
 use crate::net::split::SplitExit;
 
@@ -115,12 +116,14 @@ pub struct LinkState {
     pub targets: Vec<LatencyState>,
 }
 
-/// 整个应用的状态：键位状态 + 首页 + 连通页。
+/// 整个应用的状态：键位状态 + 首页 + 连通页 + AI 检测页。
 #[derive(Default)]
 pub struct AppState {
     pub app: App,
     pub home: HomeState,
     pub link: LinkState,
+    /// Claude/GPT 检测页状态（详见 `state_ai`）。
+    pub ai: AiState,
 }
 
 /// 线程安全的共享句柄：互斥锁 + 变更通知。
