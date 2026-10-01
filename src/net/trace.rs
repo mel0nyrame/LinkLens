@@ -11,7 +11,7 @@ pub struct Trace {
 }
 
 /// 解析 trace 文本：每行 `key=value`（首个 `=` 之后全部算值），
-/// 取 `ip` 与 `loc`（地区码统一转小写）；其余行忽略。空行与坏行容忍。
+/// 取合法 IPv4/IPv6 的 `ip` 与 `loc`（地区码统一转小写）；其余行忽略。空行与坏行容忍。
 pub fn parse_trace(text: &str) -> Trace {
     let mut trace = Trace::default();
     for line in text.lines() {
@@ -23,7 +23,9 @@ pub fn parse_trace(text: &str) -> Trace {
             continue;
         }
         match key {
-            "ip" if trace.ip.is_none() => trace.ip = Some(value.to_string()),
+            "ip" if trace.ip.is_none() && value.parse::<std::net::IpAddr>().is_ok() => {
+                trace.ip = Some(value.to_string());
+            }
             "loc" if trace.loc.is_none() => trace.loc = Some(value.to_lowercase()),
             _ => {}
         }
@@ -37,6 +39,8 @@ pub async fn fetch_trace(client: &reqwest::Client, host: &str) -> Option<Trace> 
         .get(format!("https://{host}/cdn-cgi/trace"))
         .send()
         .await
+        .ok()?
+        .error_for_status()
         .ok()?
         .text()
         .await
@@ -52,6 +56,16 @@ mod tests {
 
     /// 报告 §3.8 的 1.1.1.1 trace 真实结构（字段节选）。
     const SAMPLE: &str = "fl=123abc\nh=y\nip=198.51.100.32\nts=1700000000.000\nvisit_scheme=https\nuag=Mozilla/5.0\ncolo=HKG\nsliver=none\nhttp=http/2\nloc=HK\ntls=TLSv1.3\nsni=plaintext\nwarp=off\n";
+
+    #[test]
+    fn invalid_trace_ip_is_a_failed_probe() {
+        assert_eq!(parse_trace("ip=garbage\nloc=US\n").ip, None);
+        assert_eq!(parse_trace("ip=999.1.2.3\n").ip, None);
+        assert_eq!(
+            parse_trace("ip=2606:4700:4700::1111\n").ip.as_deref(),
+            Some("2606:4700:4700::1111")
+        );
+    }
 
     #[test]
     fn parses_ip_and_lowercased_loc_from_real_sample() {

@@ -88,10 +88,10 @@ impl RoundPlan {
         max_jitter: std::time::Duration::from_millis(0),
     };
 
-    /// 47 目标连通页节奏：预热 1 次 + 12 轮，轮间隔 ≥90ms + 0-140ms 抖动。
+    /// 47 目标连通页节奏：预热 1 次 + 8 轮，轮间隔 ≥90ms + 0-140ms 抖动。
     pub const LINK: RoundPlan = RoundPlan {
         warmup: 1,
-        rounds: 12,
+        rounds: 8,
         min_interval: std::time::Duration::from_millis(90),
         max_jitter: std::time::Duration::from_millis(140),
     };
@@ -159,7 +159,7 @@ impl LatencyProbe {
     }
 
     /// 对目标 URL 做一次「连接 + TLS 握手」计时；DNS 解析时间不计入。
-    /// 总耗时上限为 8 秒红线；任何失败（解析、连接、握手、超时）为 `None`。
+    /// 总耗时上限为 8 秒（包含 DNS 与全部地址尝试）；任何失败（解析、连接、握手、超时）为 `None`。
     pub async fn measure_url(&self, url: &str) -> RoundResult {
         let (host, port) = parse_host_port(url)?;
         self.measure(&host, port).await
@@ -167,35 +167,30 @@ impl LatencyProbe {
 
     /// 对 `host:port` 做一次「连接 + TLS 握手」计时；多个解析地址依次尝试。
     pub async fn measure(&self, host: &str, port: u16) -> RoundResult {
-        let addrs = match tokio::net::lookup_host((host, port)).await {
-            Ok(addrs) => addrs.collect::<Vec<_>>(),
-            Err(_) => return None,
-        };
-        let Ok(server_name) = rustls::pki_types::ServerName::try_from(host.to_string()) else {
-            return None;
-        };
-        for addr in addrs {
-            let started = Instant::now();
-            let attempt = async {
-                let tcp = tokio::net::TcpStream::connect(addr).await.ok()?;
+        let deadline = tokio::time::Instant::now() + PUBLIC_TIMEOUT;
+        tokio::time::timeout_at(deadline, async {
+            let addrs = tokio::net::lookup_host((host, port)).await.ok()?;
+            let server_name = rustls::pki_types::ServerName::try_from(host.to_string()).ok()?;
+            for addr in addrs {
+                let started = Instant::now();
+                let Ok(tcp) = tokio::net::TcpStream::connect(addr).await else {
+                    continue;
+                };
                 tcp.set_nodelay(true).ok();
-                // 握手完成即计时结束；连接随后直接丢弃，不等任何应用层响应
-                self.connector
+                if self
+                    .connector
                     .connect(server_name.clone(), tcp)
                     .await
-                    .ok()?;
-                Some(())
-            };
-            if tokio::time::timeout(PUBLIC_TIMEOUT, attempt)
-                .await
-                .ok()
-                .flatten()
-                .is_some()
-            {
-                return Some(started.elapsed().as_millis() as u64);
+                    .is_ok()
+                {
+                    return Some(started.elapsed().as_millis() as u64);
+                }
             }
-        }
-        None
+            None
+        })
+        .await
+        .ok()
+        .flatten()
     }
 }
 
@@ -296,9 +291,11 @@ mod tests {
     }
 
     #[test]
-    fn home_and_link_plans_match_ticket_specs() {
+    fn home_and_link_plans_match_website_round_counts() {
         assert_eq!(RoundPlan::HOME.warmup, 1);
         assert_eq!(RoundPlan::HOME.rounds, 12);
+        assert_eq!(RoundPlan::LINK.warmup, 1);
+        assert_eq!(RoundPlan::LINK.rounds, 8);
         assert_eq!(
             RoundPlan::HOME.min_interval,
             std::time::Duration::from_millis(80)

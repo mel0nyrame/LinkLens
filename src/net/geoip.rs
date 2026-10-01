@@ -63,6 +63,8 @@ pub async fn fetch_geoip(client: &reqwest::Client, ip: &str) -> Option<GeoIp> {
         .send()
         .await
         .ok()?
+        .error_for_status()
+        .ok()?
         .json::<GeoIp>()
         .await
         .ok()
@@ -81,6 +83,8 @@ pub async fn fetch_geoip_batch(
         .query(&[("ips", ips.join(","))])
         .send()
         .await
+        .ok()?
+        .error_for_status()
         .ok()?
         .json::<HashMap<String, GeoIp>>()
         .await

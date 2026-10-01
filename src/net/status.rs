@@ -52,6 +52,8 @@ pub async fn fetch_status(client: &reqwest::Client, path: &str) -> Option<Servic
         .send()
         .await
         .ok()?
+        .error_for_status()
+        .ok()?
         .text()
         .await
         .ok()

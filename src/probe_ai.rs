@@ -140,9 +140,6 @@ async fn run_page(
         loaded
     };
 
-    // 国内出口复用首页（票 02）双源结果：等首页三卡就绪
-    wait_home_egress(&shared).await;
-
     // AI 出口 trace（这就是「平台看到的你的 IP」）
     let exit = trace::fetch_trace(client, profile.trace_host).await;
     let exit_ip = exit.as_ref().and_then(|t| t.ip.clone());
@@ -196,19 +193,6 @@ async fn run_page(
         }
     }
     shared.notify();
-}
-
-/// 等待首页出口三卡就绪（国内出口复用票 02 结果，不重复探测）。
-async fn wait_home_egress(shared: &SharedState) {
-    loop {
-        {
-            let state = shared.lock();
-            if matches!(state.home.egress, crate::state::EgressPhase::Ready(_)) {
-                return;
-            }
-        }
-        shared.changed().await;
-    }
 }
 
 /// 出口 IP 的 iprisk + geoip 并行拉取；geoip 拿不到国别码且 trace 有 `loc=` 时标记兜底。

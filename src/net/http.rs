@@ -1,12 +1,12 @@
-//! 共享 HTTP 客户端：全部公网探测共用的 reqwest 配置。
+//! 共享 HTTP 客户端：公网探测与 API 请求共用的 reqwest 配置。
 //!
-//! 质量红线：公网探测超时一律 8 秒（客户端级总超时，覆盖连接到响应头全过程）。
+//! 质量红线：公网探测默认总超时 8 秒（覆盖连接到响应体读取）；聚合 API 按端点覆盖请求时限。
 
 use std::time::Duration;
 
 use reqwest::Client;
 
-/// 公网探测统一超时（秒）。任何探测源不得另设更短超时。
+/// 公网探测统一超时（秒）。探测源使用此上限，聚合 API 可覆盖请求时限。
 pub const PUBLIC_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// 构建全项目共用的探测客户端：rustls-TLS、8 秒总超时、常规浏览器 UA。
