@@ -36,10 +36,12 @@ pub fn record(
     restricted: bool,
     now_ms: u64,
 ) -> Vec<HistoryEntry> {
-    if let Some(latest) = existing.iter().find(|e| e.ip == ip) {
-        if now_ms.saturating_sub(latest.recorded_at_ms) < DEDUP_WINDOW_MS {
-            return existing.to_vec();
-        }
+    if existing
+        .iter()
+        .find(|e| e.ip == ip)
+        .is_some_and(|latest| now_ms.saturating_sub(latest.recorded_at_ms) < DEDUP_WINDOW_MS)
+    {
+        return existing.to_vec();
     }
     let mut entries: Vec<HistoryEntry> = existing
         .iter()
