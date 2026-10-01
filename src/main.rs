@@ -2,5 +2,5 @@
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    linklens::app::run().await
+    network_tui::app::run().await
 }

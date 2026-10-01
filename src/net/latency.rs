@@ -88,7 +88,7 @@ impl RoundPlan {
         max_jitter: std::time::Duration::from_millis(0),
     };
 
-    /// 47 目标连通页节奏：预热 1 次 + 8 轮，轮间隔 ≥90ms + 0-140ms 抖动。
+    /// 连通页节奏：预热 1 次 + 8 轮，轮间隔 ≥90ms + 0-140ms 抖动。
     pub const LINK: RoundPlan = RoundPlan {
         warmup: 1,
         rounds: 8,

@@ -1,7 +1,7 @@
 //! 探测编排：后台 tokio 任务把 `net` 层探测结果写进共享状态。
 //!
 //! - `spawn_home`：应用启动即运行——国内双源出口 + Cloudflare 出口三张卡、
-//!   首页 6 目标连通小卡、37 站分流出口探测与去重汇总；
+//!   首页 6 目标连通小卡、分流出口探测与去重汇总；
 //! - `spawn_link`：首次进入连通页时运行一次——全部目标的分组连通测量。
 //!
 //! 并发与节奏约束：
@@ -285,7 +285,7 @@ async fn probe_home_latency(probe: &LatencyProbe, shared: SharedState) {
         .await;
 }
 
-/// 37 站分流：并发 12 探测 → geoip-batch 补旗 → 出口去重汇总。
+/// 分流目标清单：并发 12 探测 → geoip-batch 补旗 → 出口去重汇总。
 async fn probe_home_split(client: &reqwest::Client, shared: SharedState) {
     {
         let mut state = shared.lock();
