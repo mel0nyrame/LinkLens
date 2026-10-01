@@ -4,7 +4,7 @@
 
 **Blocked by:** 03（AI 出口检测——复用其 net.coffee 客户端模式与卡片页框架）
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] 输入合法 IPv4/IPv6 触发深度查询；非法输入有明确报错（且区分 geoip 502 与 lookup 400 两种失败）
 - [x] 深度字段卡片：ai_verdict 中文判词与置信度、多源 geo（按 g1>g7>g3>g2 优先取坐标）、原生/广播 IP 徽章（注册国 vs 归属国推导，有单元测试）、历史轨迹、机房邻居、反查域名
@@ -25,3 +25,12 @@
 - `cargo test`：220 通过、0 失败、7 跳过；`cargo clippy --all-targets -- -D warnings`：通过；`git diff --check`：通过。公网 Rust 探测编排冒烟覆盖 `8.8.8.8`、`2606:4700:4700::1111` 和 `127.0.0.1`：IPv4 的 12 家 DNSBL 全部解析，timeout/rcode2 明确标为超时/查询失败；IPv6 不请求 heat/DNSBL，Radar 无数据按上游接口报告估算；bogon 的 geoip 502 与非公网主结果分别保留。
 - 临时宽屏、窄屏、End、隐藏 IP、历史打码及 bogon 预览已检查；完整真实终端 80/120/200 列矩阵与 Nerd Font 人工观感验收由票 06 收尾，预览不替代这项验证。
 - 两项明确的文案/预算取舍沿本票与规格：AI 的 5–7 分档位显示「可用」及「GPT和Gemini可用，Claude不建议使用」，上游接口报告副本的「可以尝试」不作为主文案；同 ASN 公司总请求数按本票 ≤12 次，而非上游接口报告 12 次重试加首轮的 13 次。完整算法及来源见研究报告 §3.3。
+
+
+## Answer
+
+实现已合入 `integration/linklens`，合并提交 `88443a3`，票分支实现与验收记录截至 `0f5a99f`。
+
+- 深度体检、增强区块、场景评分、最近查询和输入交互全部验收项已完成；实现路径、真实网络样例和测量限制见上方 Comments。
+- 合入后实际运行 `cargo test -q`：220 通过、0 失败、7 个需真实公网的测试默认跳过；`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`git diff --check` 全通过。
+- 真实终端多宽度矩阵、跨页滚动与全局帮助文案由 [票 06](06-polish-and-review.md) 统一收尾。本票真实 pending 轮询到达预算上限尚未实测，预算与解析行为由纯函数测试验证。
