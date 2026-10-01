@@ -4,7 +4,7 @@
 
 **Blocked by:** 01（应用骨架与主题基座）
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] 首页显示主出口与备用出口两张 IP 卡（双源 IP 不同时），来源标注清晰（ip138/my.ip.cn/GeoIP 地区库纠正）
 - [x] 每张 IP 卡带国旗与中文归属地；家宽/机房/商业专线/教育属性徽章来自 iprisk 数据
