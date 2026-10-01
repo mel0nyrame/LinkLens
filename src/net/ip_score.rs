@@ -18,6 +18,12 @@ pub struct Lookup {
     #[serde(default)]
     pub is_bogon: bool,
     #[serde(default)]
+    pub bogon_reason: String,
+    #[serde(default)]
+    pub bogon_rfc: String,
+    #[serde(default)]
+    pub src: String,
+    #[serde(default)]
     pub is_mobile: bool,
     #[serde(default)]
     pub asn_kind: String,
@@ -122,7 +128,20 @@ impl Lookup {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ApiError(pub String);
+pub struct ApiError(pub String, Option<u16>);
+
+impl ApiError {
+    pub fn new(message: String) -> Self {
+        Self(message, None)
+    }
+    pub fn status(&self) -> Option<u16> {
+        self.1
+    }
+    /// 深度接口400是终态，上游接口报告不重试也不请求v2兜底。
+    pub fn retryable(&self) -> bool {
+        self.1 != Some(400)
+    }
+}
 
 pub fn decode_response<T: serde::de::DeserializeOwned>(
     endpoint: &str,
@@ -136,9 +155,12 @@ pub fn decode_response<T: serde::de::DeserializeOwned>(
             429 => "请求过于频繁，请稍后重试",
             _ => "服务暂不可用",
         };
-        return Err(ApiError(format!("{endpoint} HTTP {status}：{detail}")));
+        return Err(ApiError(
+            format!("{endpoint} HTTP {status}：{detail}"),
+            Some(status),
+        ));
     }
-    serde_json::from_str(body).map_err(|_| ApiError(format!("{endpoint}响应格式不合法")))
+    serde_json::from_str(body).map_err(|_| ApiError::new(format!("{endpoint}响应格式不合法")))
 }
 
 /// 独立 API 时限（上游接口报告深度45s、增强14-22s），覆盖共用客户端的8s公网探测时限。
@@ -155,7 +177,7 @@ pub async fn fetch<T: serde::de::DeserializeOwned>(
         .send()
         .await
         .map_err(|e| {
-            ApiError(format!(
+            ApiError::new(format!(
                 "{endpoint}{}",
                 if e.is_timeout() {
                     "超时"
@@ -168,7 +190,7 @@ pub async fn fetch<T: serde::de::DeserializeOwned>(
     let body = response
         .text()
         .await
-        .map_err(|_| ApiError(format!("{endpoint}响应读取失败")))?;
+        .map_err(|_| ApiError::new(format!("{endpoint}响应读取失败")))?;
     decode_response(endpoint, status, &body)
 }
 
@@ -347,6 +369,9 @@ mod tests {
         let lookup =
             decode_response::<Lookup>("深度查询", 400, "<html>bad request</html>").unwrap_err();
         let geo = decode_response::<Lookup>("归属地", 502, "<html>bad gateway</html>").unwrap_err();
+        assert_eq!(lookup.status(), Some(400));
+        assert!(!lookup.retryable());
+        assert!(geo.retryable());
         assert!(lookup.0.contains("400"));
         assert!(lookup.0.contains("IP"));
         assert!(geo.0.contains("502"));
@@ -406,5 +431,15 @@ mod tests {
         assert_eq!(poll_decision(true, 10, 10), PollDecision::TimedOut);
         assert_eq!(poll_decision(true, 11, 12), PollDecision::Again);
         assert_eq!(poll_decision(true, 12, 12), PollDecision::TimedOut);
+    }
+    #[test]
+    fn bogon_fixture_keeps_reason_and_absent_asn_without_inventing_geo() {
+        let d = parse_lookup(include_str!("../../tests/fixtures/ip-lookup-bogon.json")).unwrap();
+        assert!(d.is_bogon);
+        assert_eq!(d.bogon_reason, "Loopback");
+        assert_eq!(d.bogon_rfc, "RFC1122");
+        assert_eq!(d.risk.asn, None);
+        assert_eq!(d.best_coordinates(), None);
+        assert_eq!(d.src, "g0");
     }
 }

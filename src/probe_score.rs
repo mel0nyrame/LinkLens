@@ -65,7 +65,7 @@ pub fn spawn_for_page_if_needed(shared: SharedState) {
                     .and_then(|ip| validate_query_input(&ip).ok());
                 let Some(t) = result else {
                     update(&shared, generation, |s| {
-                        s.phase = ScorePhase::Failed(ApiError(
+                        s.phase = ScorePhase::Failed(ApiError::new(
                             "当前出口识别失败，请按 / 手动输入 IP".into(),
                         ))
                     });
@@ -123,11 +123,12 @@ async fn lookup_with_retry(
         let result = ip_score::fetch(client, &path, "深度查询", DEEP_TIMEOUT).await;
         match result {
             Ok(data) => return Ok(data),
+            Err(err) if !err.retryable() => return Err(err),
             Err(err) => last = Some(err),
         }
         if attempt == 1 {
             if !update(shared, generation, |s| s.phase = ScorePhase::RetryWait) {
-                return Err(ApiError("查询已被替换".into()));
+                return Err(ApiError::new("查询已被替换".into()));
             }
             tokio::time::sleep(Duration::from_secs(15)).await;
             if !update(shared, generation, |s| {
@@ -137,18 +138,18 @@ async fn lookup_with_retry(
                     limit: 2,
                 };
             }) {
-                return Err(ApiError("查询已被替换".into()));
+                return Err(ApiError::new("查询已被替换".into()));
             }
         }
     }
     if !update(shared, generation, |s| s.phase = ScorePhase::Fallback) {
-        return Err(ApiError("查询已被替换".into()));
+        return Err(ApiError::new("查询已被替换".into()));
     }
     ip_score::fetch(
         client,
         &format!("/api/ipv2/lookup/{ip}"),
         "v2 兜底",
-        DEEP_TIMEOUT,
+        Duration::from_secs(20),
     )
     .await
     .map_err(|_| last.expect("两次失败后必有错误"))
@@ -323,7 +324,7 @@ async fn poll_related(client: &reqwest::Client, shared: &SharedState, generation
                 PollDecision::TimedOut => {
                     update(shared, generation, |s| {
                         s.related =
-                            Section::Failed(ApiError("反查域名扫描超时，请按 r 重试".into()))
+                            Section::Failed(ApiError::new("反查域名扫描超时，请按 r 重试".into()))
                     });
                     return;
                 }
@@ -362,8 +363,9 @@ async fn poll_companies(client: &reqwest::Client, shared: &SharedState, generati
                 }
                 PollDecision::TimedOut => {
                     update(shared, generation, |s| {
-                        s.companies =
-                            Section::Failed(ApiError("同 ASN 公司聚合超时，请按 r 重试".into()))
+                        s.companies = Section::Failed(ApiError::new(
+                            "同 ASN 公司聚合超时，请按 r 重试".into(),
+                        ))
                     });
                     return;
                 }
