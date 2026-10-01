@@ -76,7 +76,7 @@ async fn run_dns_leak(shared: SharedState, mode: DnsMode) {
         state.dns_leak.egress_ip = egress.ip.clone();
         state.dns_leak.egress_flag = egress.flag;
         state.dns_leak.egress_geo = egress.geo;
-        state.dns_leak.egress_country = egress.country;
+        state.dns_leak.egress_country = egress.country.clone();
     }
     shared.notify();
 
@@ -141,6 +141,19 @@ async fn run_dns_leak(shared: SharedState, mode: DnsMode) {
             }
         })
         .collect();
+
+    // 归属信息缺失时无法核验中国大陆 DNS，不把未知信息报告为干净。
+    if egress.country.is_empty()
+        || servers.iter().any(|ip| {
+            locations
+                .get(ip)
+                .is_none_or(|geo| geo.country_code.is_empty())
+        })
+    {
+        shared.lock().dns_leak.resolvers = resolvers;
+        fail_dns(&shared, "出口或解析器归属地获取失败，无法判定泄漏，请重试").await;
+        return;
+    }
 
     // 6. 三态判定（纯函数照上游接口报告规则）
     let countries: Vec<&str> = servers
@@ -257,10 +270,16 @@ async fn run_webrtc_probe(shared: SharedState) {
     }
 
     // 4. 判定：任一公网 UDP 地址 ≠ HTTP 出口 → 可能泄漏
-    let verdict = judge_webrtc(&mapped, egress_addr);
+    let candidates = collect_candidates(&mapped);
+    if egress_addr.is_none() {
+        fail_webrtc(&shared, "HTTP 出口获取失败，无法对照公网 UDP 地址，请重试").await;
+        return;
+    }
+    let public_ips: Vec<IpAddr> = candidates.iter().map(|candidate| candidate.ip).collect();
+    let verdict = judge_webrtc(&public_ips, egress_addr);
     {
         let mut state = shared.lock();
-        state.webrtc.candidates = collect_candidates(&mapped);
+        state.webrtc.candidates = candidates;
         state.webrtc.verdict = Some(verdict);
         state.webrtc.phase = WebrtcPhase::Done;
     }

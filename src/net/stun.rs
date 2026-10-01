@@ -55,6 +55,11 @@ pub fn parse_xor_mapped_address(response: &[u8], transaction_id: &[u8; 12]) -> O
         return None;
     }
 
+    let message_len = usize::from(u16::from_be_bytes([response[2], response[3]]));
+    if message_len % 4 != 0 || response.len() != 20 + message_len {
+        return None;
+    }
+
     let mut offset = 20;
     while offset + 4 <= response.len() {
         let attr_type = u16::from_be_bytes([response[offset], response[offset + 1]]);
@@ -248,6 +253,15 @@ mod tests {
     }
 
     #[test]
+    fn response_rejects_inconsistent_message_length() {
+        for length in [0_u16, 8, 13, 16] {
+            let mut response = V4_RESPONSE.to_vec();
+            response[2..4].copy_from_slice(&length.to_be_bytes());
+            assert_eq!(parse_xor_mapped_address(&response, &txid(0x0f)), None);
+        }
+    }
+
+    #[test]
     fn transaction_ids_are_random() {
         let a = new_transaction_id();
         let b = new_transaction_id();
@@ -283,7 +297,7 @@ mod tests {
 
     /// 测试内独立实现的 Binding Success Response 编码（与被测代码互为对照）。
     fn test_success_response(ip: IpAddr, port: u16, txid: &[u8; 12]) -> Vec<u8> {
-        let mut response = vec![0x01, 0x01, 0x00, 0x08];
+        let mut response = vec![0x01, 0x01, 0x00, 0x0C];
         response.extend_from_slice(&[0x21, 0x12, 0xA4, 0x42]);
         response.extend_from_slice(txid);
         response.extend_from_slice(&[0x00, 0x20, 0x00, 0x08]);

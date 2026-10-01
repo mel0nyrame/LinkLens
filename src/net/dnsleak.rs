@@ -80,7 +80,6 @@ pub struct DnsResult {
     #[serde(default)]
     pub token: String,
     /// 触发过查询的 DNS 解析器出口 IP 列表。
-    #[serde(default)]
     pub dns_servers: Vec<String>,
 }
 
@@ -120,6 +119,8 @@ pub async fn fetch_dns_result(client: &reqwest::Client, token: &str) -> Option<V
         ))
         .send()
         .await
+        .ok()?
+        .error_for_status()
         .ok()?
         .text()
         .await
@@ -222,9 +223,10 @@ mod tests {
         let empty =
             parse_dns_result(r#"{"token": "x", "dns_servers": []}"#).expect("空列表应可解析");
         assert!(empty.dns_servers.is_empty());
-        let missing = parse_dns_result("{}").expect("缺字段应容忍");
+        let missing = parse_dns_result(r#"{"dns_servers":[]}"#).expect("允许省略 token");
         assert!(missing.dns_servers.is_empty());
         assert_eq!(missing.token, "");
+        assert_eq!(parse_dns_result("{}"), None, "缺解析器字段不是有效回读");
     }
 
     #[test]
