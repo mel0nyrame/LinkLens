@@ -7,14 +7,13 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 use serde_json::Value;
 
-use crate::detect::ai::{TrustTier, trust_tier};
+use super::trust_tier_color;
+use crate::detect::ai::trust_tier;
 use crate::detect::scene::{self, IpOrigin, Scene};
 use crate::net::geoip::flag_emoji;
 use crate::net::ip_score::{BgpNode, Lookup};
 use crate::state_score::{ScorePhase, ScoreState, Section};
-use crate::theme::color::{
-    THEME_ACCENT, THEME_ERROR, THEME_MUTED, THEME_SUCCESS, THEME_SUCCESS_SOFT, THEME_WARNING,
-};
+use crate::theme::color::{THEME_ACCENT, THEME_ERROR, THEME_MUTED, THEME_SUCCESS, THEME_WARNING};
 use crate::theme::icon::{self, Icon};
 use crate::theme::widget::{badge, card, kv, trust_bar};
 use crate::ui::layout::{card_grid_columns, card_rects, content_card_rects};
@@ -234,7 +233,11 @@ fn cards(s: &ScoreState, hide_ip: bool) -> Vec<ScoreCard> {
     out.push(section_card("中文归属地", &s.geo, |g| {
         vec![kv(
             "归属地",
-            &format!("{} {}", flag_emoji(&g.country_code), g.geo_string()),
+            &format!(
+                "{} {}",
+                flag_emoji(&g.country_code),
+                crate::net::cc::chinese_location(g)
+            ),
         )]
     }));
     let mut related = section_card("反查域名", &s.related, |r| {
@@ -440,12 +443,7 @@ fn deep_cards(out: &mut Vec<ScoreCard>, d: &Lookup) {
     if let Some(score) = d.risk.trust_score {
         trust.push(kv("信任分", &format!("{score}/100")));
         let tier = trust_tier(score);
-        let color = match tier {
-            TrustTier::ExtremelyPure | TrustTier::Pure => THEME_SUCCESS,
-            TrustTier::Good => THEME_SUCCESS_SOFT,
-            TrustTier::Neutral => THEME_WARNING,
-            TrustTier::Suspicious => THEME_ERROR,
-        };
+        let color = trust_tier_color(tier);
         trust.push(Line::from(badge(tier.label(), color)));
         trust.push(trust_bar(score, 20));
     } else {
