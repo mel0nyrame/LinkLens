@@ -5,13 +5,14 @@
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Padding};
+use ratatui::widgets::{Block, BorderType, Padding};
 
 use super::color::{THEME_BADGE_FG, THEME_BORDER, THEME_MUTED, THEME_TEXT, trust_bar_cells};
 
 /// 卡片：带边框与标题的分区，是界面的基本布局单位。
 pub fn card<'a>(title: impl Into<Line<'a>>) -> Block<'a> {
     Block::bordered()
+        .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(THEME_BORDER))
         .title(title.into().style(Style::new().fg(THEME_TEXT)))
         .padding(Padding::horizontal(1))
