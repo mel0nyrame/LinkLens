@@ -133,7 +133,11 @@ pub async fn query_stun(server: SocketAddr) -> Option<SocketAddr> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SocketAddr, binding_request, new_transaction_id, parse_xor_mapped_address};
+    use std::net::IpAddr;
+
+    use super::{
+        SocketAddr, binding_request, new_transaction_id, parse_xor_mapped_address, query_stun,
+    };
 
     /// 手算正例（IPv4）：Binding Success Response 携带 1.2.3.4:5678 的
     /// XOR-MAPPED-ADDRESS。x-port = 5678(0x162E) ^ 0x2112 = 0x373C；
@@ -248,5 +252,49 @@ mod tests {
         let a = new_transaction_id();
         let b = new_transaction_id();
         assert_ne!(a, b, "连续两个事务 ID 不应相同");
+    }
+
+    /// 回环集成（不依赖外网）：假 STUN 服务器应答 Binding，
+    /// `query_stun` 应解出来源映射地址。响应由测试内独立编码。
+    #[tokio::test]
+    async fn query_stun_parses_response_from_live_socket() {
+        let server = tokio::net::UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("绑定回环端口");
+        let port = server.local_addr().expect("本地地址").port();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 64];
+            let (len, peer) = server.recv_from(&mut buf).await.expect("收请求");
+            // 请求必须是 20 字节 Binding Request，事务 ID 原样回传
+            assert_eq!(len, 20);
+            assert_eq!(&buf[..2], &[0x00, 0x01]);
+            assert_eq!(&buf[2..4], &[0x00, 0x00]);
+            assert_eq!(&buf[4..8], &[0x21, 0x12, 0xA4, 0x42]);
+            let txid: [u8; 12] = buf[8..20].try_into().expect("事务 ID");
+            let response = test_success_response(peer.ip(), peer.port(), &txid);
+            server.send_to(&response, peer).await.expect("发响应");
+        });
+
+        let mapped = query_stun(format!("127.0.0.1:{port}").parse().expect("回环地址")).await;
+        let mapped = mapped.expect("回环应答应解出映射地址");
+        assert_eq!(mapped.ip(), IpAddr::from([127, 0, 0, 1]));
+        assert!(mapped.port() > 0, "映射端口应是客户端临时端口");
+    }
+
+    /// 测试内独立实现的 Binding Success Response 编码（与被测代码互为对照）。
+    fn test_success_response(ip: IpAddr, port: u16, txid: &[u8; 12]) -> Vec<u8> {
+        let mut response = vec![0x01, 0x01, 0x00, 0x08];
+        response.extend_from_slice(&[0x21, 0x12, 0xA4, 0x42]);
+        response.extend_from_slice(txid);
+        response.extend_from_slice(&[0x00, 0x20, 0x00, 0x08]);
+        response.push(0x00);
+        response.push(0x01);
+        response.extend_from_slice(&(port ^ 0x2112).to_be_bytes());
+        let [a, b, c, d] = match ip {
+            IpAddr::V4(v4) => v4.octets(),
+            IpAddr::V6(_) => panic!("测试只用 IPv4"),
+        };
+        response.extend_from_slice(&[a ^ 0x21, b ^ 0x12, c ^ 0xA4, d ^ 0x42]);
+        response
     }
 }

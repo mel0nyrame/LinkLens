@@ -65,8 +65,8 @@ fn render_page(f: &mut Frame, area: Rect, state: &AppState) {
         Page::Claude => pages::claude::render(f, area),
         Page::Gpt => pages::gpt::render(f, area),
         Page::IpScore => pages::ip_score::render(f, area),
-        Page::DnsLeak => pages::dns_leak::render(f, area),
-        Page::WebRtc => pages::webrtc::render(f, area),
+        Page::DnsLeak => pages::dns_leak::render(f, area, &state.dns_leak, state.app.hide_ip),
+        Page::WebRtc => pages::webrtc::render(f, area, &state.webrtc, state.app.hide_ip),
         Page::Connectivity => pages::connectivity::render(f, area, &state.link),
     }
 }
