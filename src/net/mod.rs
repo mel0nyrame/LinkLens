@@ -13,5 +13,6 @@ pub mod http;
 pub mod iprisk;
 pub mod latency;
 pub mod split;
+pub mod stun;
 pub mod targets;
 pub mod trace;
