@@ -5,3 +5,4 @@ pub mod probe;
 pub mod state;
 pub mod theme;
 pub mod ui;
+pub mod history;
