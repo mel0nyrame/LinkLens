@@ -29,6 +29,25 @@ pub struct Iprisk {
     pub as_organization: String,
     #[serde(rename = "countryCode", default)]
     pub country_code: String,
+    /// 0-100 信任分（后端按 CIDR 段计算并缓存；段代表陷阱见模块注释）。
+    #[serde(default)]
+    pub trust_score: Option<u8>,
+    /// 代理出口的行政区/城市（AI 页属性卡）。
+    #[serde(default)]
+    pub region: String,
+    #[serde(default)]
+    pub city: String,
+    /// 安全信号：VPN / 代理 / Tor / 机器人 / 滥用记录（AI 页安全卡逐项徽章）。
+    #[serde(default)]
+    pub is_vpn: Option<bool>,
+    #[serde(default)]
+    pub is_proxy: Option<bool>,
+    #[serde(default)]
+    pub is_tor: Option<bool>,
+    #[serde(default)]
+    pub is_crawler: Option<bool>,
+    #[serde(default)]
+    pub is_abuser: Option<bool>,
 }
 
 impl Iprisk {
@@ -83,7 +102,13 @@ mod tests {
         assert_eq!(risk.company_type, "hosting");
         assert_eq!(risk.as_organization, "NetLab Global");
         assert_eq!(risk.country_code, "us");
-        // 样例里的额外字段（isBroadcast/trust_score 等）不进结构体也不报错
+        assert_eq!(risk.trust_score, Some(85));
+        assert_eq!(risk.region, "California");
+        assert_eq!(risk.city, "Los Angeles");
+        assert_eq!(risk.is_vpn, Some(false));
+        assert_eq!(risk.is_tor, Some(false));
+        assert_eq!(risk.is_abuser, Some(false));
+        // 样例里的其余字段（isBroadcast/is_mobile 等）不进结构体也不报错
     }
 
     #[test]
@@ -144,5 +169,17 @@ mod tests {
         assert_eq!(risk.property_badge(), None);
         let empty = Iprisk::default();
         assert_eq!(empty.property_badge(), None);
+    }
+
+    #[test]
+    fn missing_safety_and_score_fields_default_to_none() {
+        // 上游字段可能缺失：安全信号与信任分一律 Option，缺省不误判
+        let risk: Iprisk = serde_json::from_str(r#"{"ip": "1.2.3.4"}"#).expect("应容忍缺字段");
+        assert_eq!(risk.trust_score, None);
+        assert_eq!(risk.is_vpn, None);
+        assert_eq!(risk.is_proxy, None);
+        assert_eq!(risk.is_tor, None);
+        assert_eq!(risk.is_crawler, None);
+        assert_eq!(risk.is_abuser, None);
     }
 }

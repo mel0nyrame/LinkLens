@@ -4,4 +4,5 @@
 //! 历史去重等），全部为纯函数，是单元测试的主战场。
 //! 允许依赖：`net` 与外部 crate；不得依赖 `ui`（依赖单向 ui → detect → net）。
 
+pub mod ai;
 pub mod leak;

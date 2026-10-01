@@ -1,5 +1,6 @@
 //! 七个功能页。每页只导出一个 `render`；页面内容由后续各票填充。
 
+pub mod ai;
 pub mod claude;
 pub mod connectivity;
 pub mod dns_leak;
