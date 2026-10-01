@@ -1,6 +1,6 @@
 # Spec: linklens —— LinkLens 终端网络诊断工具
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -76,3 +76,7 @@ Status: ready-for-agent
 - 权威接口事实以仓库内接口逆向研究报告为准（含全部端点的请求/响应样例、字段含义、curl 验证结论、已知陷阱清单）；实现时遇到字段歧义以报告 §2 为准，不要凭记忆猜。
 - 与上游接口报告行为差异（不上报、无指纹维度）应写进最终用户可见的帮助文案或 README。
 - 票切分与阻塞关系由 /to-tickets 产出，遵循本地 Markdown tracker 约定（每票一文件、Status 行、按阻塞序交付）。
+
+## Answer
+
+票 01–06 全部 resolved，实现与审查修复汇集于 `integration/linklens`。七页功能、用户文档和验收记录已交付；使用方法见 [README](../../README.md)，[双轴审查记录](review.md)保留全部发现与修复复核。整合提交 `f111988` 的 224 项测试及 Clippy、格式检查通过，终端验证与测量边界见票 06。

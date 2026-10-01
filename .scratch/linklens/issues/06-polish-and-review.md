@@ -4,13 +4,13 @@
 
 **Blocked by:** 02（首页与连通测量）、03（AI 出口检测）、04（泄漏检测）、05（IP 评分页）
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 80/120/200 列三档终端宽度实机过检，卡片网格降级表现正确
 - [x] 超时红线核对：公网探测 8s、各接口超时与net.coffee 接口报告一致（旧实现曾误写 5s）
 - [x] 全部用户文案过 GLOSSARY 检查：无 Avoid 词（如「评分查询」）、「泄漏/泄露」统一「泄漏」
 - [x] README：用法说明 + 与上游接口报告行为差异（不上报统计数据、无浏览器指纹维度）
-- [ ] 对全部改动做双轴 code-review（Standards + Spec 对照规格），问题修复或记录
+- [x] 对全部改动做双轴 code-review（Standards + Spec 对照规格），问题修复或记录
 - [x] cargo test 全绿、clippy 无警告
 
 ## Comments
@@ -36,3 +36,9 @@
 - 实际执行 cargo test：224 通过、0 失败、8 ignored；cargo fmt --check、cargo clippy --all-targets -- -D warnings、cargo build、git diff --check 均通过。Context7 核对 reqwest 请求级 timeout 覆盖客户端默认值，以及 tokio::join! 的并行轮询语义。
 - 针对性实际 PTY 80×45：Claude 初次及连续 rr 刷新均有两个本轮参照出口 Pending 槽，随后完成。国内出口从 192.0.2.160/iP138.com 更新为 192.0.2.216/IP.cn，Claude 出口从 IPv4 更新为 IPv6；评分中文归属地显示“美国 Google”。q 正常退出，status=0。
 - 评分追加 PTY 专测：End 后 Up、Home、PgDn/PgUp、Down/Up 全部通过，q 退出 0。首次逐字符全帧比较受 pyte 宽字占位留白影响，追加专测按行忽略排版留白并人工读首尾正文确认；证据在 /tmp/linklens-terminal-validation-review-fixes/ 及其 score-scroll-80/，外部脚本未进入仓库。README 已重读并同步本轮刷新、有效历史与 DNS 专用边界。
+
+## Answer
+
+票 06 已完成，全部实现与审查修复已合入 `integration/linklens`。整合提交 `f111988` 经双轴复核：Standards 3 项、Spec 4 项全部修复，无遗留问题；[审查记录](../review.md)保留首次发现、修复依据及复核结果。
+
+合入后实际验证：224 测试通过、0 失败、8 ignored，Clippy 全目标零警告、格式与 diff 检查通过。80/120/200 列 PTY 与最终修复的针对性 80 列复测结果、字体与真实网络测量限制见本票 Comments。运行历史已备份至整合工作树的自忽略 `.data/worktree-backups/`；源码和数据交付保留在整合工作树，实现工作树已清理；票 05 取消登记后的残留目录保留在 `.data/worktree-backups/05-residual-checkout/` 归档中。
