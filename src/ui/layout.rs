@@ -43,6 +43,25 @@ pub fn card_rects(area: Rect, count: usize) -> Vec<Rect> {
         .collect()
 }
 
+/// 按内容所需高度排列卡片；同行取最大高度，返回完整画布高度。
+pub fn content_card_rects(width: u16, heights: &[u16]) -> (Vec<Rect>, u16) {
+    let cols = usize::from(card_grid_columns(width));
+    let slots = card_rects(Rect::new(0, 0, width, 1), cols);
+    let mut y = 0u16;
+    let mut rects = Vec::with_capacity(heights.len());
+    for row in heights.chunks(cols) {
+        let height = row.iter().copied().max().unwrap_or(0);
+        for (col, _) in row.iter().enumerate() {
+            rects.push(Rect::new(slots[col].x, y, slots[col].width, height));
+        }
+        y = y.saturating_add(height).saturating_add(CARD_GAP);
+    }
+    (
+        rects,
+        y.saturating_sub(if heights.is_empty() { 0 } else { CARD_GAP }),
+    )
+}
+
 /// 把总长按 `n` 份均分（先扣掉 `n-1` 个间隔），余量分给靠前的份。
 ///
 /// 恰好返回 `n` 个长度；空间不足时部分长度可能为 0（退化但不 panic）。
@@ -76,6 +95,21 @@ fn offsets(lengths: &[u16], gap: u16) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrolling_grid_keeps_entire_tallest_card_and_places_next_row_after_it() {
+        let (rects, height) = content_card_rects(100, &[5, 20, 7, 4]);
+        assert_eq!(
+            rects,
+            vec![
+                Rect::new(0, 0, 33, 20),
+                Rect::new(34, 0, 33, 20),
+                Rect::new(68, 0, 32, 20),
+                Rect::new(0, 21, 33, 4)
+            ]
+        );
+        assert_eq!(height, 25);
+    }
 
     #[test]
     fn three_columns_at_90_or_wider() {

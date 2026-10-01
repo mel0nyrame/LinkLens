@@ -11,7 +11,7 @@ use ratatui::crossterm::event::{Event, EventStream, KeyEventKind};
 
 use crate::theme::icon::Icon;
 use crate::ui;
-use crate::{probe, probe_ai, probe_leak, state};
+use crate::{probe, probe_ai, probe_leak, probe_score, state};
 
 /// 七个功能页，顺序即导航顺序，也是数字键 `1`-`7` 的直达目标。
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -103,7 +103,9 @@ impl App {
     pub fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
         match code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
-            KeyCode::Char('c') if modifiers == KeyModifiers::CONTROL => self.should_quit = true,
+            KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
+                self.should_quit = true
+            }
             KeyCode::Char('i') => self.hide_ip = !self.hide_ip,
             KeyCode::Char('r') if matches!(self.page, Page::Claude | Page::Gpt) => {
                 self.ai_refresh = true;
@@ -136,6 +138,9 @@ pub async fn run() -> std::io::Result<()> {
     let mut webrtc_spawned = false;
 
     let result = loop {
+        if shared.lock().app.should_quit {
+            break Ok(());
+        }
         // 首次进入连通页时启动 47 目标测量（仅一次）
         if !link_spawned && shared.lock().app.page == Page::Connectivity {
             probe::spawn_link(shared.clone());
@@ -149,6 +154,7 @@ pub async fn run() -> std::io::Result<()> {
 
         // 首次进入 Claude/GPT 页时启动对应检测（幂等）
         probe_ai::spawn_for_page_if_needed(shared.clone());
+        probe_score::spawn_for_page_if_needed(shared.clone());
 
         // `r` 键重查当前 AI 检测页
         let refresh_page = {
@@ -166,7 +172,15 @@ pub async fn run() -> std::io::Result<()> {
         }
 
         {
-            let snapshot = shared.lock();
+            let mut snapshot = shared.lock();
+            if snapshot.app.page == Page::IpScore {
+                let content = ui::shell::content_area(terminal.get_frame().area());
+                snapshot.score.scroll = snapshot.score.scroll.min(ui::pages::ip_score::max_scroll(
+                    content,
+                    &snapshot.score,
+                    snapshot.app.hide_ip,
+                ));
+            }
             if let Err(err) = terminal.draw(|f| ui::shell::render(f, &snapshot)) {
                 break Err(err);
             }
@@ -176,10 +190,19 @@ pub async fn run() -> std::io::Result<()> {
             event = events.next() => {
                 match event {
                     Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
-                        // 页面级按键先行消费（f/d/r，与全局键位无冲突）
-                        let page = shared.lock().app.page;
-                        probe_leak::handle_page_key(shared.clone(), page, key.code);
-                        shared.lock().app.handle_key(key.code, key.modifiers);
+                        let consumed = {
+                            let mut snapshot = shared.lock();
+                            if snapshot.app.page == Page::IpScore {
+                                let content = ui::shell::content_area(terminal.get_frame().area());
+                                let max_scroll = ui::pages::ip_score::max_scroll(content, &snapshot.score, snapshot.app.hide_ip);
+                                snapshot.score.handle_key(key.code, key.modifiers, max_scroll)
+                            } else { false }
+                        };
+                        if !consumed {
+                            let page = shared.lock().app.page;
+                            probe_leak::handle_page_key(shared.clone(), page, key.code);
+                            shared.lock().app.handle_key(key.code, key.modifiers);
+                        }
                     }
                     Some(Ok(_)) => {}
                     Some(Err(err)) => break Err(err),
