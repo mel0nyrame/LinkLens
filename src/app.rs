@@ -8,7 +8,7 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 use futures_util::StreamExt;
 use ratatui::crossterm::event::{
-    DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyEventKind,
+    DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyEventKind, MouseEventKind,
 };
 
 use crate::theme::icon::Icon;
@@ -167,7 +167,14 @@ pub async fn run() -> std::io::Result<()> {
         let _ = ratatui::try_restore();
         return Err(error);
     }
-    let mut events = EventStream::new();
+    // 鼠标移动、拖动与点击没有页面行为，须在唤醒重绘前丢弃，避免连续移动积压滚轮。
+    let mut events = EventStream::new().filter(|event| {
+        std::future::ready(!matches!(
+            event,
+            Ok(Event::Mouse(mouse))
+                if !matches!(mouse.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown)
+        ))
+    });
     let shared = state::SharedState::new();
     let mut home_task = probe::spawn_home(shared.clone());
     let mut link_task = None;
