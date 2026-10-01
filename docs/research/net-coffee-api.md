@@ -268,6 +268,19 @@
 - 外部深链（非 API）：Shodan/AbuseIPDB/VirusTotal/bgp.tools/ipinfo/Spamhaus/ipdata/ip2location/Scamalytics 搜索页链接。
 - **curl 复放：✅ 全部**（场景评分在前端，需移植算法）。
 
+#### 场景评分与 v2 补充核验（2026-10-01）
+
+来源：[IP 评分主脚本](https://ip.net.coffee/ip/ip-page.js)、[v2 脚本](https://ip.net.coffee/ip/ip-page-v2.js)。补充原公式简述中未展开的细节：
+
+- base 与扣分后的最终分值都以 `floor(x + 0.5)` 取整，再做 0–10 限制、风险上限与地区门槛。机房分类还包含 `company_type=hosting` 与 `asn_kind=hosting/cdn`；注册国或归属国为空时，既不判原生也不判广播。
+- 风险上限 9 的触发条件为历史滥用、滥用扣分大于 0、蜜罐扣分大于 0、爬虫、代理/VPN/Tor。机房、商业网络、广播属性本身不触发上限。
+- 滥用原始值优先取 `intelligence.abuser_score_raw`，缺失时取 `abuser_score`，按浮点前缀解析；不能解析时才用档位（high/very_high/veryhigh 或 elevated）。蜜罐优先取非空 `rep_threat`，否则取 `httpbl_threat`。
+- Radar 无数据时，按公共服务、爬虫、移动网络、机房、商业网络、其余网络的顺序估算人类占比，分别为 2/6/93/18/65/88%。实际值与估算值都按 Tor 乘 0.4，否则代理/VPN 乘 0.6；爬虫取 `min(h, h×0.3+2)`，历史滥用再减 5，最后限于 1–99%。界面须区分统计值与估算值。
+- 主接口以 `related_domains_pending` 表示反查未完成，轮询响应使用 `pending`。主查询 45 秒超时，400 不重试，其余失败等待 15 秒后重试一次。v2 单请求时限：heat/DNSBL/同 ASN 公司 15 秒、BGP 22 秒、Radar 14 秒。
+- 上游接口报告 AI 场景 5–7 分的短文案是「可以尝试」，副提示为「GPT和Gemini可用，Claude不建议使用」。本项目规格将短文案定为「可用」，副提示保持上述内容；数值、门槛与风险算法一致。
+
+本次取得的主脚本 SHA-256 为 `d74fb71b553e1aabe3167cfcd3a3dd3c4eb3b6e773f171d65dd35ffdc07db15a`，v2 脚本为 `63e53102af14a256a74930d1a6dacc20137d07ee52f11efb4464d2996e7d76d8`。
+
 ### 3.4 GPT 检测 `/gpt/`
 与 Claude 页**完全同构**，仅 3 处不同：
 1. 出口 IP：GET `https://chatgpt.com/cdn-cgi/trace`（8s）

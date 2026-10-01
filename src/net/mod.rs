@@ -7,11 +7,13 @@
 
 pub mod cc;
 pub mod cn_source;
+pub mod dnsleak;
 pub mod geoip;
 pub mod http;
 pub mod iprisk;
 pub mod latency;
 pub mod split;
+pub mod stun;
 pub mod targets;
 pub mod trace;
 
