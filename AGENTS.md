@@ -27,6 +27,8 @@ LinkLens 是 Rust 终端网络诊断工具。产品名写作 **LinkLens**，主�
 
 ## 发布维护
 
+- 发布卫生：调查记录与 fixture 使用文档示例地址、示例定位及会话标识；公开截图检查地址与反向 DNS，提交邮箱使用 GitHub noreply。保留正常接口域名与公共服务地址，验证脱敏不改变测试覆盖。
+
 - 分支职责：`dev` 保存源码和开发历史，`main` 是独立的展示入口，保持一次初始化提交。修改首页或发布文件后同步两边；`main` 的允许文件与同步方法见 [发布维护](.github/RELEASING.md)。
 - 修改 CI、安装脚本、发布版本或 Release 文案前，读取 [发布维护](.github/RELEASING.md)，按其验证和交付步骤执行。Release 文案由维护者逐版本编写，以 `.github/releases/vX.Y.Z.md` 为唯一来源，打标签前完成。
 

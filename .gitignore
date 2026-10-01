@@ -4,3 +4,4 @@
 .data/
 __pycache__/
 *.pyc
+.assets/ip_score.png
