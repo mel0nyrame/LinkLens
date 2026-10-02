@@ -7,7 +7,7 @@ LinkLens 是 Rust 终端网络诊断工具。产品名写作 **LinkLens**，主�
 - 永远使用中文回答；用户可见文案以中文为主，保留必要的协议和产品名称。
 - 先检查 `git status` 和 `git worktree list`，确认当前分支及任务所属工作树，保留其他任务的修改和本地数据。
 - 优先沿现有入口做最小改动。影响结果的假设须明确说明，并定义可执行的完成条件。
-- 工程术语使用 [GLOSSARY.md](GLOSSARY.md)。涉及模块边界、依赖或持久化策略时，读取 `docs/adr/` 中对应决策；领域文档的消费约定见 [domain.md](docs/agents/domain.md)。
+- 工程术语使用 [GLOSSARY.md](GLOSSARY.md)。涉及模块边界、依赖或持久化策略时，读取 `docs/adr/` 中对应决策。
 
 ## 修改入口与边界
 
@@ -22,8 +22,22 @@ LinkLens 是 Rust 终端网络诊断工具。产品名写作 **LinkLens**，主�
 - 非平凡修改先定义能捕获具体问题的验证，再执行。默认单元测试覆盖纯函数、状态变换和布局几何；真实 HTTP/DNS/STUN 与终端渲染使用独立冒烟或 PTY 验证。
 - 修改 Rust 代码后运行 `cargo test`、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`，交付前检查 diff。真实网络测试默认忽略，只在任务需要时显式执行。
 - 修改命令入口时，构建并验证 `linklens`、`llens` 的等价行为；修改界面时验证实际终端输入、滚动和退出恢复。
-- 新功能和验收要求写入本地 Markdown tracker；建票、关闭或引用历史验收时，读取 [issue-tracker.md](docs/agents/issue-tracker.md)，需要分诊标签时读取 [triage-labels.md](docs/agents/triage-labels.md)。追溯七页初始需求时读取 [历史规格](.scratch/linklens/spec.md)；当前行为与修改入口见 README、源码及任务导航。
+- 新功能和验收要求写入 GitHub Issues，操作约定见下方 Agent skills。追溯七页初始需求时读取 [历史规格](.scratch/linklens/spec.md)；当前行为与修改入口见 README、源码及任务导航。
 - 交付说明报告实际修改、实际检查及验证边界。提交说明使用 LinkLens 的功能语义；push 和后续历史改写分别需要用户明确授权。
+
+## Agent skills
+
+### Issue tracker
+
+新需求、规格与实施票据使用 GitHub Issues；建票、领取、关闭或读取历史验收时，见 [tracker 约定](docs/agents/issue-tracker.md)。
+
+### Triage labels
+
+分诊时使用五个默认角色及 [标签映射](docs/agents/triage-labels.md)。
+
+### Domain docs
+
+单上下文：根目录 `GLOSSARY.md` 与 `docs/adr/`；读取领域文档时，见 [消费约定](docs/agents/domain.md)。
 
 ## 发布维护
 
