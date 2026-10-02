@@ -3,6 +3,8 @@
 > 调查日期：2026-10-01（浏览器实测 + JS 静态逆向 + curl 复放三重验证）
 > 响应样例保留接口字段与结构；实测网络的地址、定位及会话标识已替换为示例值。示例地址用于说明格式，不代表这些保留地址具有对应的上游评分或地理属性。
 
+> 使用边界：本文的上游事实对应调查日期及所记录的脚本来源；端点耗时观测与页面请求时限分别阅读。各功能的 LinkLens 采用值和实现入口见 §3 对应章节，面向用户的实际行为见 [README](../../README.md)。契约变更、响应异常或现有来源无法解释问题时，补查上游并更新对应章节及来源。
+
 ---
 
 ## 1. 站点概览与技术栈
@@ -255,32 +257,48 @@
 7. 设备信息（时区/语言/WebGL/Canvas 指纹）纯前端；POST `/api/session` 上报；localStorage 存最近 6 条 Claude IP 历史（同 IP 24h 内不重复记录）。
 - **TUI 建议**：无浏览器无法跑 WebRTC，其余全部可实现（trace + 2 个 API + DNS 探测用 UDP 53 直查随机子域）。
 
+#### LinkLens 请求边界
+
+上面的秒数是上游页面设置。LinkLens 的通用公网客户端采用 8 秒，[iprisk 请求](../../src/net/iprisk.rs) 显式覆盖为 10 秒；geoip 使用通用 8 秒，而上游 AI 页为 5 秒。可用性采用原生 TCP/TLS 测量，单次总边界为 8 秒，不能把端点调查的返回耗时当成超时设置。编排与平台 profile 见 [probe_ai.rs](../../src/probe_ai.rs)，默认值见 [http.rs](../../src/net/http.rs)，用户可见差异见 [README](../../README.md)。GPT 共用此边界；独立 DNS 页采用值见 §3.6。
+
 ### 3.3 IP 评分 `/ip/` 与 `/ip/{ip}`
-- 当前 IP 自动检测：GET **同源** `https://ip.net.coffee/cdn-cgi/trace`（`/cdn-cgi/trace` 相对路径）取 `ip=`。
-- 搜索：仅接受合法 IPv4/IPv6，跳转 `/ip/{ip}`（IPv6 URL encode）。
-- 主数据：GET `/api/ip/lookup/{ip}`（45s，失败 15s 后自动重试 1 次）；`related_domains` pending 时轮询 `/api/ip/related/{ip}`。
-- v2 增强（等主接口返回后）：`/api/ipv2/heat|bgp|dnsbl|asncos|radar`（见 §2.6）；人机流量条 = `/api/ipv2/radar/{asn}` 的 `human`，无数据时前端按 `company_type/asn_kind` 估算并按 vpn/proxy/tor/crawler/abuser 折减。
-- **场景评分（纯前端算法，TUI 需采用）**：`sceneScores()` 基于 `trust_score`：
-  - base = round(trust/10)；原生 IP(+0.5，countryCode==registered_country_code)、人类流量(+0.5，非 datacenter/crawler/public_service)、business(-0.5)、datacenter(-2)、广播 IP(-1)；AI 场景外 datacenter 再 -1；proxy/vpn/tor：AI -2 其他 -3；历史滥用 AI -0.5 其他 -1；`abuser_score_raw` >0.05 扣 2 / >0.025 扣 1 / >0.01 扣 0.5（或按 `abuser_level` high/very_high 扣 2、elevated 扣 1）；蜜罐 `rep_threat`>0 扣 1（≤25）或 2；crawler 扣 0.5；clamp 0-10，risky 时上限 9。
-  - 地区硬门槛：`REGION = {tiktok:{block:[CN,HK,IN,IR,AF,KP,JO,SO,SN,KG,UZ]}, social:{block:[CN,IR,KP,TM],partial:[RU,MM]}, ai:{block:[CN,RU,BY,IR,KP,CU,SY,AF],partial:[HK,MO,VE,MM]}}`，block→0 分"地区不可用"，partial→封顶 5 分"部分可用"。
-  - 档位：≥10 极佳 / ≥8 推荐 / ≥5 可用（AI 场景显示"GPT和Gemini可用，Claude不建议使用"）/ <5 不推荐。
-- 端口扫描/可 Ping/全球延迟：`/api/ip/portscan`（含 429 限流 UI）、`/api/ip/pingcheck`、`/api/ping/global`（见 §2.8）。
-- 外部深链（非 API）：Shodan/AbuseIPDB/VirusTotal/bgp.tools/ipinfo/Spamhaus/ipdata/ip2location/Scamalytics 搜索页链接。
-- **curl 复放：✅ 全部**（场景评分在前端，需移植算法）。
 
-#### 场景评分与 v2 补充核验（2026-10-01）
+#### 上游请求与轮询
 
-来源：[IP 评分主脚本](https://ip.net.coffee/ip/ip-page.js)、[v2 脚本](https://ip.net.coffee/ip/ip-page-v2.js)。补充原公式简述中未展开的细节：
+- 当前 IP 自动检测：GET **同源** `https://ip.net.coffee/cdn-cgi/trace`（`/cdn-cgi/trace` 相对路径）取 `ip=`；搜索仅接受合法 IPv4/IPv6，跳转 `/ip/{ip}`（IPv6 URL encode）。
+- 主数据：GET `/api/ip/lookup/{ip}`，页面请求时限 45 秒；400 不重试，其余失败等待 15 秒后重试一次。主接口以 `related_domains_pending` 表示反查未完成，轮询 `/api/ip/related/{ip}` 的响应使用 `pending`。
+- 主接口返回后请求 v2 增强（字段见 §2.6）：heat/DNSBL/同 ASN 公司各 15 秒，BGP 22 秒，Radar 14 秒。以上为页面设置，端点调查中一次返回的耗时不能替代请求边界。
+- 端口扫描、可 Ping、全球延迟见 §2.8；Shodan/AbuseIPDB/VirusTotal/bgp.tools/ipinfo/Spamhaus/ipdata/ip2location/Scamalytics 为外部搜索深链。
+- Bogon（非公网地址）主页面提前显示 `bogon_reason`/`bogon_rfc`，v2 也停止增强，接口高信任分不能解释为可用公网出口。上游评分页还隐藏公共服务 IP 的 v2 增强卡。
 
-- base 与扣分后的最终分值都以 `floor(x + 0.5)` 取整，再做 0–10 限制、风险上限与地区门槛。机房分类还包含 `company_type=hosting` 与 `asn_kind=hosting/cdn`；注册国或归属国为空时，既不判原生也不判广播。
-- 风险上限 9 的触发条件为历史滥用、滥用扣分大于 0、蜜罐扣分大于 0、爬虫、代理/VPN/Tor。机房、商业网络、广播属性本身不触发上限。
-- 滥用原始值优先取 `intelligence.abuser_score_raw`，缺失时取 `abuser_score`，按浮点前缀解析；不能解析时才用档位（high/very_high/veryhigh 或 elevated）。蜜罐优先取非空 `rep_threat`，否则取 `httpbl_threat`。
-- Radar 无数据时，按公共服务、爬虫、移动网络、机房、商业网络、其余网络的顺序估算人类占比，分别为 2/6/93/18/65/88%。实际值与估算值都按 Tor 乘 0.4，否则代理/VPN 乘 0.6；爬虫取 `min(h, h×0.3+2)`，历史滥用再减 5，最后限于 1–99%。界面须区分统计值与估算值。
-- 主接口以 `related_domains_pending` 表示反查未完成，轮询响应使用 `pending`。主查询 45 秒超时，400 不重试，其余失败等待 15 秒后重试一次。v2 单请求时限：heat/DNSBL/同 ASN 公司 15 秒、BGP 22 秒、Radar 14 秒。
-- 上游接口报告 AI 场景 5–7 分的短文案是「可以尝试」，副提示为「GPT和Gemini可用，Claude不建议使用」。本项目规格将短文案定为「可用」，副提示保持上述内容；数值、门槛与风险算法一致。
-- Bogon（非公网地址）主页面提前显示 `bogon_reason`/`bogon_rfc`，v2 也停止增强，不能把接口的高信任分解释为可用公网出口。上游接口报告公共服务 IP 的 v2 增强卡也会隐藏；本终端评分页按票 05 的完整资料要求展示合法公共服务 IP 的增强信息。
+#### 场景评分算法
 
-本次取得的主脚本 SHA-256 为 `d74fb71b553e1aabe3167cfcd3a3dd3c4eb3b6e773f171d65dd35ffdc07db15a`，v2 脚本为 `63e53102af14a256a74930d1a6dacc20137d07ee52f11efb4464d2996e7d76d8`。
+来源为 2026-10-01 核验的 [IP 评分主脚本](https://ip.net.coffee/ip/ip-page.js) 的 `sceneScores()`。按以下顺序处理：
+
+1. **分类与 base**：`base = floor(trust_score / 10 + 0.5)`。机房包括 `is_datacenter`、`company_type=hosting`、`asn_kind=hosting/cdn`。归属国与注册国均非空时，相同为原生、不同为广播；任一为空时两者均不成立。
+2. **属性加减**：原生 +0.5；非机房、非爬虫且非公共服务 +0.5；商业网络 -0.5；广播 -1；机房在 AI 场景 -2、其他场景 -3。
+3. **风险加减**：proxy/vpn/tor 命中任一，AI -2、其他 -3；历史滥用 AI -0.5、其他 -1；爬虫 -0.5。滥用原始值优先取 `intelligence.abuser_score_raw`，缺失时取 `abuser_score`，按浮点前缀解析：>0.05 扣 2、>0.025 扣 1、>0.01 扣 0.5，其余扣 0；不能解析时才按 `abuser_level` 的 high/very_high/veryhigh 扣 2、elevated 扣 1。蜜罐优先取非空 `rep_threat`，否则 `httpbl_threat`；>25 扣 2、>0 扣 1，其余扣 0。
+4. **最终取整与风险上限**：对加减后的值再次 `floor(x + 0.5)`，限制在 0–10；历史滥用、正数滥用扣分、正数蜜罐扣分、爬虫或代理/VPN/Tor 任一成立时，`risky` 上限为 9。机房、商业网络、广播属性本身不触发上限。
+5. **地区门槛与档位**：block 归 0 分「地区不可用」，partial 封顶 5 分「部分可用」。地区表如下；其余按 ≥10「极佳」、≥8「推荐」、≥5「可用」、<5「不推荐」展示。上游 AI 场景 5–7 分的短文案为「可以尝试」，副提示为「GPT和Gemini可用，Claude不建议使用」。
+
+| 场景 | block | partial |
+| --- | --- | --- |
+| TikTok | CN、HK、IN、IR、AF、KP、JO、SO、SN、KG、UZ | 无 |
+| 社媒 | CN、IR、KP、TM | RU、MM |
+| AI | CN、RU、BY、IR、KP、CU、SY、AF | HK、MO、VE、MM |
+
+#### Radar 人机比
+
+来源为同日核验的 [v2 脚本](https://ip.net.coffee/ip/ip-page-v2.js)。读取 `/api/ipv2/radar/{asn}` 的 `human`；无数据时按公共服务、爬虫、移动网络、机房、商业网络、其余网络的顺序估算，分别为 2/6/93/18/65/88%。实际值与估算值都按 Tor 乘 0.4，否则代理/VPN 乘 0.6；爬虫取 `min(h, h×0.3+2)`，历史滥用再减 5，最后限制在 1–99%。界面区分统计值与估算值。
+
+#### LinkLens 采用值与验证入口
+
+- 场景数值、取整、风险上限、地区门槛及 Radar 算法采用上述规则；AI 5–7 分短文案采用「可用」，保留上述副提示。纯函数与属性、阈值、取整、风险封顶和地区测试见 [scene.rs](../../src/detect/scene.rs)，解析见 [ip_score.rs](../../src/net/ip_score.rs)。
+- 主查询与 v2 请求时限按本节采用；请求编排与重试入口见 [probe_score.rs](../../src/probe_score.rs)。同 ASN 公司总请求数最多 12 次，上游为首轮加 12 次重试；反查最多 10 次，两类 pending 请求间隔均为 1.5 秒。
+- Bogon 停止增强并显示非公网依据；合法公共服务 IP 展示完整增强资料。页面入口见 [评分页](../../src/ui/pages/ip_score.rs)。
+- curl 可复放接口请求，场景评分与 Radar 折减属于前端算法；网络冒烟和纯函数边界验证分别记录。
+
+来源快照：主脚本 SHA-256 为 `d74fb71b553e1aabe3167cfcd3a3dd3c4eb3b6e773f171d65dd35ffdc07db15a`，v2 脚本为 `63e53102af14a256a74930d1a6dacc20137d07ee52f11efb4464d2996e7d76d8`。
 
 ### 3.4 GPT 检测 `/gpt/`
 与 Claude 页**完全同构**，仅 3 处不同：
@@ -307,6 +325,12 @@
 - 实测样例：token `sampledns0123456789ab`，5 轮后回读 15 个 resolver IP（含 多个解析器与转发节点，具体网络地址已脱敏 —— 说明本地 DNS 走了 CF/公共 DNS 的多级转发）。
 - 域名模式：`<token>-<n>.d.ip.net.coffee`，`*.d.ip.net.coffee` 是泛解析（权威 NS 为站点自建，pixel.gif 由 nginx 返回 42B gif）。**TUI**：直接对 `<token>-1..5.d.ip.net.coffee` 发 UDP 53 A 查询（系统 resolver 或指定 resolver），等 2-3s 后 curl 回读。✅接口已验证。
 - 补充：`/dns/` 页面顶部注释还提到备用方案 "Query o-o.myaddr.l.google.com TXT via multiple DoH providers"（实际代码未启用，可作 TUI 的跨验证手段）。
+
+#### LinkLens 采用值与验证入口
+
+LinkLens 通过系统 resolver 对随机子域发起原生 DNS 查询；快速 5 轮、深度 8 轮，等待 2 秒后回读，最多 3 次轮询、轮询间隔 2 秒。结果回读显式采用 5 秒请求时限，覆盖通用客户端 8 秒默认值；resolver 查询仍采用通用 8 秒边界。此处针对独立 DNS 页，上游 AI 页内嵌 DNS 的 3 秒回读属于另一流程。
+
+token、回读解析、轮数与等待常量及其纯函数测试见 [dnsleak.rs](../../src/net/dnsleak.rs)；编排与默认忽略的真实网络冒烟见 [probe_leak.rs](../../src/probe_leak.rs)，三态判定及测试见 [leak.rs](../../src/detect/leak.rs)。结果为空与 HTTP/解析失败分别处理，不能把失败解释为已加密；真实网络结果受运行环境影响。
 
 ### 3.7 WebRTC `/webrtc/`（独立页，❌ 纯浏览器能力）
 - STUN 列表（**共 3 个**）：`stun:stun.l.google.com:19302`、`stun:stun.cloudflare.com:3478`、`stun:stun1.l.google.com:19302`（无 TURN）。
