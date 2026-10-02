@@ -157,6 +157,14 @@ pub async fn dispatch() -> std::io::Result<()> {
         std::process::exit(code);
     }
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.len() == 1 && args[0] == "--linklens-update-identity" {
+        let build = crate::update::BuildIdentity::official().map_err(std::io::Error::other)?;
+        println!(
+            "{}",
+            serde_json::to_string(&build).map_err(std::io::Error::other)?
+        );
+        return Ok(());
+    }
     if args.is_empty() {
         return run().await;
     }
@@ -169,31 +177,11 @@ pub async fn dispatch() -> std::io::Result<()> {
 }
 
 async fn manual_update() -> Result<(), String> {
-    let build = crate::update::BuildIdentity::official()?;
-    let actual = std::env::current_exe()
-        .map_err(|e| e.to_string())?
-        .canonicalize()
-        .map_err(|e| e.to_string())?;
-    let directory = actual.parent().ok_or("无法确定安装目录")?;
-    if crate::update_install::recover_installation(directory).map_err(|e| e.to_string())?
-        == crate::update_install::RecoveryOutcome::RolledBack
-    {
-        println!(
-            "已恢复 {} 的原安装；请重新启动该目录中可用的 linklens / llens 后再执行 update",
-            directory.display()
-        );
-        return Ok(());
-    }
-    match crate::update::check(&build).await? {
-        crate::update::CheckResult::UpToDate => {
-            println!("LinkLens {} 已是最新稳定版", build.version);
-            Ok(())
-        }
-        crate::update::CheckResult::Available(update) => {
-            println!("正在下载并校验 LinkLens {}…", update.version());
-            let prepared = prepare_update(update).await?;
-            finish_update(prepared)
-        }
+    if let Some(ready) = prepare_update().await? {
+        finish_update(ready)
+    } else {
+        println!("LinkLens {} 已是最新稳定版", env!("CARGO_PKG_VERSION"));
+        Ok(())
     }
 }
 
@@ -202,17 +190,31 @@ struct ReadyUpdate {
     install: crate::update_install::PreparedInstall,
 }
 
-async fn prepare_update(update: crate::update::AvailableUpdate) -> Result<ReadyUpdate, String> {
-    let downloaded = crate::update::download(&update).await?;
+async fn prepare_update() -> Result<Option<ReadyUpdate>, String> {
+    let build = crate::update::BuildIdentity::official()?;
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
+    let (installation, recovered) =
+        crate::update_install::UpdateInstallation::begin(&current).map_err(|e| e.to_string())?;
+    if recovered == crate::update_install::RecoveryOutcome::RolledBack {
+        return Err(format!(
+            "已恢复 {} 的原安装；请重新启动该目录中可用的 linklens / llens 后再执行 update",
+            installation.directory().display()
+        ));
+    }
+    crate::update::verify_installed_identity(&build, &installation).await?;
+    // TUI 提示仅为发现版本；显式操作在流程锁内重新检查并锁定发布。
+    let crate::update::CheckResult::Available(update) = crate::update::check(&build).await? else {
+        return Ok(None);
+    };
+    let downloaded = crate::update::download(&update).await?;
     tokio::task::spawn_blocking(move || {
-        let install =
-            crate::update_install::prepare(&current, &downloaded.linklens, &downloaded.llens)
-                .map_err(|e| e.to_string())?;
-        Ok(ReadyUpdate {
+        let install = installation
+            .prepare(&downloaded.linklens, &downloaded.llens)
+            .map_err(|e| e.to_string())?;
+        Ok(Some(ReadyUpdate {
             version: downloaded.version,
             install,
-        })
+        }))
     })
     .await
     .map_err(|e| format!("更新准备任务失败：{e}"))?
@@ -313,34 +315,44 @@ impl UpdateSource {
             })),
         }
     }
-    async fn prepare(self, update: crate::update::AvailableUpdate) -> Result<ReadyUpdate, String> {
+    async fn prepare(self) -> Result<Option<ReadyUpdate>, String> {
         match self {
-            Self::Official => prepare_update(update).await,
+            Self::Official => prepare_update().await,
             #[cfg(test)]
             Self::Fixture {
                 scenario,
                 directory,
             } => {
+                let current = directory.join(if cfg!(windows) {
+                    "linklens.exe"
+                } else {
+                    "linklens"
+                });
+                let (installation, _) = crate::update_install::UpdateInstallation::begin(&current)
+                    .map_err(|e| e.to_string())?;
                 let delay = if scenario == "cancel" || scenario == "quit" {
                     3000
                 } else {
                     300
                 };
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                if scenario == "latest" {
+                    return Ok(None);
+                }
                 if scenario == "failure" {
                     return Err("测试下载校验失败（SHA-256）".into());
                 }
-                let current = directory.join(if cfg!(windows) {
-                    "linklens.exe"
-                } else {
-                    "linklens"
-                });
-                let install = crate::update_install::prepare(&current, b"new-main", b"new-short")
+                let install = installation
+                    .prepare(b"new-main", b"new-short")
                     .map_err(|e| e.to_string())?;
-                Ok(ReadyUpdate {
-                    version: update.version().into(),
+                Ok(Some(ReadyUpdate {
+                    version: if scenario == "stale" {
+                        "0.3.0".into()
+                    } else {
+                        "0.2.0".into()
+                    },
                     install,
-                })
+                }))
             }
         }
     }
@@ -363,7 +375,8 @@ async fn run_session(shared: state::SharedState, source: UpdateSource) -> std::i
     });
     let probes_enabled = source.probes_enabled();
     let mut check_task = source.check_task();
-    let mut update_task: Option<tokio::task::JoinHandle<Result<ReadyUpdate, String>>> = None;
+    let mut update_task: Option<tokio::task::JoinHandle<Result<Option<ReadyUpdate>, String>>> =
+        None;
     let mut home_task = probes_enabled.then(|| probe::spawn_home(shared.clone()));
     let mut link_task = None;
     let mut webrtc_spawned = false;
@@ -450,9 +463,8 @@ async fn run_session(shared: state::SharedState, source: UpdateSource) -> std::i
                         };
                         match action {
                             Some(crate::state_update::UpdateAction::Download) => {
-                                let update = shared.lock().update.available.clone().expect("更新弹窗有可用版本");
                                 let download_source = source.clone();
-                                update_task = Some(tokio::spawn(async move { download_source.prepare(update).await }));
+                                update_task = Some(tokio::spawn(async move { download_source.prepare().await }));
                             }
                             Some(crate::state_update::UpdateAction::Cancel) => {
                                 if let Some(task) = update_task.take() { task.abort(); }
@@ -501,7 +513,13 @@ async fn run_session(shared: state::SharedState, source: UpdateSource) -> std::i
             } => {
                 update_task.take();
                 match prepared {
-                    Ok(Ok(ready)) => break Ok(Some(ready)),
+                    Ok(Ok(Some(ready))) => break Ok(Some(ready)),
+                    Ok(Ok(None)) => {
+                        let mut state = shared.lock();
+                        state.update.downloading = false;
+                        state.update.available = None;
+                        state.update.notice = Some("已是最新稳定版".into());
+                    }
                     Ok(Err(error)) => shared.lock().update.failed(error),
                     Err(error) => shared.lock().update.failed(format!("更新准备任务失败：{error}")),
                 }

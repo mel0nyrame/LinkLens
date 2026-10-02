@@ -1,5 +1,5 @@
 //! 官方 Release 自更新入口；不负责安装或界面。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BuildIdentity {
     pub version: String,
     pub target: String,
@@ -167,6 +167,53 @@ impl Service {
         .await
         .map_err(|_| "更新下载超时（180 秒）".to_owned())?
     }
+}
+
+/// 锁保护下核对磁盘程序身份，拒绝沿被替换的路径使用旧进程版本更新。
+pub async fn verify_installed_identity(
+    build: &BuildIdentity,
+    installation: &crate::update_install::UpdateInstallation,
+) -> Result<(), String> {
+    use tokio::io::AsyncReadExt;
+    for program in installation.programs().map_err(|e| e.to_string())? {
+        let disk = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let mut child = tokio::process::Command::new(&program)
+                .arg("--linklens-update-identity")
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .map_err(|e| format!("无法核对磁盘程序身份：{e}"))?;
+            let mut bytes = Vec::new();
+            child
+                .stdout
+                .take()
+                .ok_or("无法读取程序身份")?
+                .take(4097)
+                .read_to_end(&mut bytes)
+                .await
+                .map_err(|e| e.to_string())?;
+            if bytes.len() > 4096 {
+                return Err("程序身份响应超出大小限制".to_owned());
+            }
+            let status = child.wait().await.map_err(|e| e.to_string())?;
+            if !status.success() {
+                return Err("安装目录程序不支持官方更新身份核对，请按原安装方式修复".to_owned());
+            }
+            serde_json::from_slice::<BuildIdentity>(&bytes)
+                .map_err(|e| format!("程序身份响应无效：{e}"))
+        })
+        .await
+        .map_err(|_| "磁盘程序身份核对超时（5 秒）".to_owned())??;
+        if &disk != build {
+            return Err(format!(
+                "安装目录中的 {} 已变化或两个命令身份不一致；请重新启动该目录中的命令，必要时按原安装方式修复",
+                program.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
