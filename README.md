@@ -138,6 +138,6 @@ cargo fmt --check
 
 LinkLens 使用 [MIT License](LICENSE)。
 
-## Community
+## 社区
 
 感谢 [LINUX DO](https://linux.do) 社区提供开放友好的技术讨论平台。
