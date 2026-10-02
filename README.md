@@ -98,7 +98,7 @@ llens update
 
 设置 `LINKLENS_NO_UPDATE_CHECK=1` 关闭 TUI 自动检查，仅影响自动检查，手动 `update` 仍然可用。自动检查失败静默结束，不打断诊断。检查和下载沿用 HTTP 客户端的系统代理环境变量约定，不新增代理设置。
 
-发布流程为五个预编译目标构建更新程序；自更新的实际平台验收范围以 [功能规格与验收记录](https://github.com/mel0nyrame/LinkLens/issues/2) 为准。macOS ARM64 / Intel 与 Linux musl ARM64 / x64 已验证命令、临时目录安装与 PTY 交互；Linux x64 通过仿真运行，Windows x64 仍待原生验收。自更新使用 HTTPS 和同一 Release 的 SHA-256 校验清单，未增加独立签名认证。
+发布流程为五个预编译目标构建更新程序；自更新的实际平台验收范围以 [功能规格与验收记录](https://github.com/mel0nyrame/LinkLens/issues/2) 为准。macOS ARM64 / Intel 与 Linux musl ARM64 / x64 已验证命令、临时目录安装与 PTY 交互；Linux x64 通过仿真运行。Windows x64 已在原生 CI 验证运行中程序替换、辅助进程交接和结果反馈；Windows 终端交互不属于上述 PTY 验收范围。自更新使用 HTTPS 和同一 Release 的 SHA-256 校验清单，未增加独立签名认证。
 
 ## 操作指南
 
