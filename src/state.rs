@@ -235,6 +235,7 @@ mod link_tests {
 #[derive(Default)]
 pub struct AppState {
     pub app: App,
+    pub update: crate::state_update::UpdateState,
     pub home: HomeState,
     pub link: LinkState,
     /// Claude/GPT 检测页状态（详见 `state_ai`）。

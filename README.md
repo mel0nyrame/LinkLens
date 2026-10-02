@@ -150,7 +150,7 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-真实网络冒烟测试默认跳过，可用 `cargo test --lib -- --ignored` 单独运行。界面与输入行为还需在实际终端验证。
+真实网络冒烟测试默认跳过，可用 `cargo test --lib live_ -- --ignored` 单独运行。界面与输入行为还需在实际终端验证。自更新的可复现 PTY 验收使用 `python3 .github/scripts/test_update_pty.py`，在临时安装目录运行测试专用场景，不请求真实更新服务，也不读写用户历史。
 
 提交代码时，CI 运行测试、格式和 Clippy 检查；只改 Markdown、文档图片或协议文件时，运行文档检查。发布标签使用 `v主版本.次版本.修订版本`，Release 文案由维护者编写后随版本保存。
 
