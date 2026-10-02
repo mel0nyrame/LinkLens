@@ -1,8 +1,10 @@
 """Exercise CI routing, release gates, archives and installer against local fixtures."""
 import hashlib
 import io
+import json
 import os
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -44,6 +46,59 @@ class ReleaseTools(unittest.TestCase):
             for tag in ("v1.2.4", "bad/tag", "v1.2.3-beta"):
                 with self.assertRaises(ValueError):
                     validate(tag, root)
+
+    def test_release_build_passes_official_metadata_to_both_commands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Cargo.toml").write_text('[package]\nversion = "1.2.3"\n')
+            notes = root / ".github/releases/v1.2.3.md"
+            notes.parent.mkdir(parents=True)
+            notes.write_text("A complete hand-written release note. " * 5)
+            mocks = root / "mocks"
+            mocks.mkdir()
+            (mocks / "cargo").write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+with Path("cargo-record.jsonl").open("a") as output:
+    output.write(json.dumps({"args": sys.argv[1:],
+        "version": os.environ.get("LINKLENS_RELEASE_VERSION"),
+        "target": os.environ.get("LINKLENS_RELEASE_TARGET")}) + "\\n")
+''')
+            (mocks / "cargo").chmod(0o755)
+            env = {**os.environ, "PATH": str(mocks) + os.pathsep + os.environ["PATH"],
+                   "RELEASE_TAG": "v1.2.3", "BUILD_TARGET": "aarch64-apple-darwin",
+                   "LINKLENS_RELEASE_VERSION": "v0.0.0", "LINKLENS_RELEASE_TARGET": "wrong"}
+            result = subprocess.run([sys.executable, str(ROOT / ".github/scripts/build_release.py")],
+                                    cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            records = [json.loads(line) for line in (root / "cargo-record.jsonl").read_text().splitlines()]
+            self.assertEqual(records, [
+                {"args": ["test", "--locked", "--target", "aarch64-apple-darwin"],
+                 "version": "v1.2.3", "target": "aarch64-apple-darwin"},
+                {"args": ["build", "--release", "--locked", "--bins", "--target", "aarch64-apple-darwin"],
+                 "version": "v1.2.3", "target": "aarch64-apple-darwin"},
+            ])
+
+    def test_release_build_rejects_invalid_identity_before_cargo(self):
+        for tag, target in (("v1.2.4", "aarch64-apple-darwin"),
+                            ("v1.2.3", "x86_64-unknown-freebsd"),
+                            ("v1.2.3-beta", "aarch64-apple-darwin")):
+            with self.subTest(tag=tag, target=target), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "Cargo.toml").write_text('[package]\nversion = "1.2.3"\n')
+                notes = root / ".github/releases/v1.2.3.md"
+                notes.parent.mkdir(parents=True)
+                notes.write_text("A complete hand-written release note. " * 5)
+                mocks = root / "mocks"
+                mocks.mkdir()
+                (mocks / "cargo").write_text('#!/bin/sh\ntouch cargo-invoked\n')
+                (mocks / "cargo").chmod(0o755)
+                env = {**os.environ, "PATH": str(mocks) + os.pathsep + os.environ["PATH"],
+                       "RELEASE_TAG": tag, "BUILD_TARGET": target}
+                result = subprocess.run([sys.executable, str(ROOT / ".github/scripts/build_release.py")],
+                                        cwd=root, env=env, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((root / "cargo-invoked").exists())
 
     def test_archive_contents_and_checksum(self):
         for target in ("x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"):

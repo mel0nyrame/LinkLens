@@ -13,6 +13,7 @@
 | 场景评分与 Radar 人机比 | [scene.rs](../../src/detect/scene.rs) 保存纯判定与边界测试，[ip_score.rs](../../src/net/ip_score.rs) 负责解析，[probe_score.rs](../../src/probe_score.rs) 负责请求与轮询；改规则先读接口报告 §3.3。 |
 | DNS/STUN 泄漏检测 | [probe_leak.rs](../../src/probe_leak.rs) 编排，[dnsleak.rs](../../src/net/dnsleak.rs) / [stun.rs](../../src/net/stun.rs) 处理 IO 与解析，[leak.rs](../../src/detect/leak.rs) 判定；测试就近放置，真实网络冒烟为 ignored。 |
 | 历史持久化与双命令 | [history.rs](../../src/history.rs) 保存路径、格式和去重接缝；[main.rs](../../src/main.rs) / [llens.rs](../../src/bin/llens.rs) 共用应用逻辑。数据约束见 [ADR-0003](../adr/0003-user-data-dir.md)，缺分及去重测试在历史模块。 |
+| 自更新与发布来源 | 两个命令经 [main.rs](../../src/main.rs) / [llens.rs](../../src/bin/llens.rs) 进入共享应用；更新编排与构建身份集中在 `src/update.rs`，纯判定与归档校验位于 `src/detect/update.rs`，网络 IO 位于 `src/net/update.rs`。官方构建身份由 [.github/scripts/build_release.py](../../.github/scripts/build_release.py) 注入，普通源码构建缺省不具有该身份；长期边界见 [ADR-0004](../adr/0004-self-update.md)，验收范围见 [规格票](https://github.com/mel0nyrame/LinkLens/issues/2)。 |
 | 卡片、徽章、图标与信任分颜色 | [widget.rs](../../src/theme/widget.rs) / [icon.rs](../../src/theme/icon.rs) 提供主题助手；[pages/mod.rs](../../src/ui/pages/mod.rs) 的 `trust_tier_color` 供 AI 与评分页复用。 |
 
 评分页有固定输入栏，正文高度与滚动上限由 [ip_score.rs](../../src/ui/pages/ip_score.rs) 扣除输入栏后计算；其他页面的上限由 [pages/mod.rs](../../src/ui/pages/mod.rs) 计算。修改两类页面时，分别核对首尾、窗口缩放和输入焦点，滚动步长与边界复用 `scroll.rs`。
