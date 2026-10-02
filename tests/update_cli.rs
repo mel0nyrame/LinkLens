@@ -35,6 +35,14 @@ fn source_update_is_equivalent_and_does_not_enter_tui_even_if_checks_are_disable
 #[test]
 fn both_real_commands_implement_private_official_identity_protocol() {
     let expected = network_tui::update::BuildIdentity::official();
+    if option_env!("LINKLENS_RELEASE_VERSION").is_some()
+        || option_env!("LINKLENS_RELEASE_TARGET").is_some()
+    {
+        assert!(
+            expected.is_ok(),
+            "带发布标识的构建必须具有有效官方身份：{expected:?}"
+        );
+    }
     for command in [env!("CARGO_BIN_EXE_linklens"), env!("CARGO_BIN_EXE_llens")] {
         let output = Command::new(command)
             .arg("--linklens-update-identity")
