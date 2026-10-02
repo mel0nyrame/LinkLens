@@ -23,7 +23,7 @@
 
 ## 自动构建与发布
 
-Release 校验标签与 Cargo 版本一致，要求对应文案文件，然后运行五个平台的测试与构建，打包 `linklens`、`llens`、README 和 MIT 协议。Linux 使用 musl，macOS 使用各架构的原生 runner，Windows 使用 x64 MSVC 并静态链接 C 运行库。SHA-256 汇总在 `SHA256SUMS`。
+Release 校验标签与 Cargo 版本一致，要求对应文案文件。[build_release.py](scripts/build_release.py) 为五个平台执行测试与构建，并将 `LINKLENS_RELEASE_VERSION`（`vX.Y.Z` 标签）与 `LINKLENS_RELEASE_TARGET`（构建目标）传入 Cargo，供两个命令内嵌官方来源身份。普通源码构建不设置这两个变量。该身份用于来源与附件选择，不是签名认证；版本、目标或文案校验失败时不开始构建。打包 `linklens`、`llens`、README 和 MIT 协议。Linux 使用 musl，macOS 使用各架构的原生 runner，Windows 使用 x64 MSVC 并静态链接 C 运行库。SHA-256 汇总在 `SHA256SUMS`。
 
 全部构建通过后才发布：先创建 draft，再上传附件，最后用文案文件公开 Release。流程不使用自动生成的发布说明；失败时修复 `dev` 并发布新版本，或对未公开的失败运行执行重试，保持已公开标签不可变。
 
