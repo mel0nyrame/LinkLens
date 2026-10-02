@@ -99,6 +99,7 @@ def scenario(binary, mode, columns):
         session.wait("LinkLens")
         session.send(b"4/203.0.113.10")
         session.wait("新版 0.2.0")
+        assert not (directory/".linklens-update.lock").exists(), "自动检查不应锁安装目录"
         assert "LinkLens 更新" not in session.text(), "提示抢占了评分输入"
         session.send(b"u")
         session.pump(.2)
@@ -120,7 +121,11 @@ def scenario(binary, mode, columns):
             # 下载时重新进入评分编辑，字符仍由输入框消费。
             session.send(b"4/203.0.113.10u")
             session.pump(.2)
-        if mode == "failure":
+        if mode == "latest":
+            session.wait("已是最新稳定版")
+            assert session.proc.poll() is None, "最新版本不应报告安装成功后退出"
+            session.send(b"q")
+        elif mode == "failure":
             session.wait("测试下载校验失败")
             session.send(b"\x1b")
             session.pump(.2)
@@ -130,6 +135,9 @@ def scenario(binary, mode, columns):
             session.send(b"\x1b")
             session.pump(3.3)
             assert session.proc.poll() is None, "取消后迟到结果退出或安装"
+            with (directory/".linklens-update.lock").open("r+b") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(lock, fcntl.LOCK_UN)
             session.send(b"\x1b")
             session.pump(.2)
             session.send(b"1\x1b[F")
@@ -139,8 +147,9 @@ def scenario(binary, mode, columns):
             session.send(b"q")
         text, raw = session.finish()
         assert "input=203.0.113.10u" in text, "评分 u 未被编辑器保留"
-        if mode == "success":
-            assert "已更新到 LinkLens 0.2.0" in text
+        if mode in ("success", "stale"):
+            expected = "0.3.0" if mode == "stale" else "0.2.0"
+            assert f"已更新到 LinkLens {expected}" in text, "安装使用了 TUI 缓存的旧版本"
             assert raw.index(b"\x1b[?1049l") < raw.index("已更新到 LinkLens".encode()), "结果在恢复终端前输出"
             assert (directory/"linklens").read_bytes() == b"new-main"
             assert (directory/"llens").read_bytes() == b"new-short"
@@ -161,7 +170,7 @@ def main():
     args = parser.parse_args()
     binary = args.binary or test_binary()
     for columns in (80, 120, 200):
-        for mode in ("failure", "cancel", "quit", "success"):
+        for mode in ("failure", "cancel", "quit", "success", "stale", "latest"):
             scenario(binary, mode, columns)
 
 

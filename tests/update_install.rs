@@ -223,3 +223,20 @@ fn running_executable_holder() {
         std::thread::park();
     }
 }
+
+#[test]
+fn update_flow_holds_directory_lock_before_download_and_releases_on_cancel() {
+    use network_tui::update_install::UpdateInstallation;
+    let dir = InstallDir::new();
+    let (first, _) = UpdateInstallation::begin(&dir.0.join(main_name())).unwrap();
+    assert!(
+        UpdateInstallation::begin(&dir.0.join(main_name())).is_err(),
+        "下载前必须阻止第二个流程"
+    );
+    assert!(prepare(&dir.0.join(main_name()), b"v0.3-main", b"v0.3-short").is_err());
+    drop(first);
+    assert!(
+        UpdateInstallation::begin(&dir.0.join(main_name())).is_ok(),
+        "取消释放目录锁"
+    );
+}

@@ -73,69 +73,116 @@ fn names() -> [&'static str; 2] {
         ["linklens", "llens"]
     }
 }
+/// 从显式更新开始持有安装目录锁，直到取消或最终替换完成。
+#[derive(Debug)]
+pub struct UpdateInstallation {
+    current_exe: PathBuf,
+    directory: PathBuf,
+    lock: fs::File,
+}
+impl UpdateInstallation {
+    pub fn begin(current_exe: &Path) -> Result<(Self, RecoveryOutcome), InstallError> {
+        let actual = current_exe.canonicalize()?;
+        if !names()
+            .iter()
+            .any(|name| actual.file_name() == Some(std::ffi::OsStr::new(name)))
+        {
+            return Err(
+                io::Error::other("当前程序名称不是 linklens 或 llens，无法确定安装目标").into(),
+            );
+        }
+        let directory = actual
+            .parent()
+            .ok_or_else(|| io::Error::other("无法确定安装目录"))?
+            .to_path_buf();
+        let lock = acquire_lock(&directory)?;
+        let recovered = recover_locked(&directory)?;
+        Ok((
+            Self {
+                current_exe: actual,
+                directory,
+                lock,
+            },
+            recovered,
+        ))
+    }
+    pub fn directory(&self) -> &Path {
+        &self.directory
+    }
+    pub fn programs(&self) -> Result<Vec<PathBuf>, InstallError> {
+        let mut programs = Vec::new();
+        for name in names() {
+            let path = self.directory.join(name);
+            if validate_regular(&path)? {
+                programs.push(path);
+            }
+        }
+        Ok(programs)
+    }
+    /// 将流程锁直接转交暂存结果；没有解锁再上锁的窗口。
+    pub fn prepare(self, linklens: &[u8], llens: &[u8]) -> Result<PreparedInstall, InstallError> {
+        if linklens.is_empty() || llens.is_empty() {
+            return Err(io::Error::other("两个新程序均不能为空").into());
+        }
+        let Self {
+            current_exe: actual,
+            directory,
+            lock,
+        } = self;
+        #[cfg(not(windows))]
+        let _ = actual;
+        let originals = [
+            validate_regular(&directory.join(names()[0]))?,
+            validate_regular(&directory.join(names()[1]))?,
+        ];
+        let staging = directory.join(".linklens-update");
+        fs::create_dir(&staging)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))?;
+        }
+        let prepared = PreparedInstall {
+            directory,
+            staging,
+            lock: Some(lock),
+            originals,
+            preserve: false,
+            #[cfg(windows)]
+            current_exe: actual,
+        };
+        write_journal(
+            &prepared.staging,
+            &Journal {
+                phase: Phase::Prepared,
+                originals,
+            },
+        )?;
+        for (name, bytes) in names().into_iter().zip([linklens, llens]) {
+            let mut file = fs::File::create(prepared.staging.join(format!("{name}.new")))?;
+            file.write_all(bytes)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                file.set_permissions(fs::Permissions::from_mode(0o755))?;
+            }
+            file.sync_all()?;
+        }
+        sync_directory(&prepared.staging)?;
+        Ok(prepared)
+    }
+}
+/// 已校验字节的底层安装入口；生产更新使用 UpdateInstallation 覆盖检查和下载阶段。
 pub fn prepare(
     current_exe: &Path,
     linklens: &[u8],
     llens: &[u8],
 ) -> Result<PreparedInstall, InstallError> {
-    if linklens.is_empty() || llens.is_empty() {
-        return Err(io::Error::other("两个新程序均不能为空").into());
-    }
-    let actual = current_exe.canonicalize()?;
-    if !names()
-        .iter()
-        .any(|name| actual.file_name() == Some(std::ffi::OsStr::new(name)))
-    {
-        return Err(
-            io::Error::other("当前程序名称不是 linklens 或 llens，无法确定安装目标").into(),
-        );
-    }
-    let directory = actual
-        .parent()
-        .ok_or_else(|| io::Error::other("无法确定安装目录"))?
-        .to_path_buf();
-    let lock = acquire_lock(&directory)?;
-    recover_locked(&directory)?;
-    let originals = [
-        validate_regular(&directory.join(names()[0]))?,
-        validate_regular(&directory.join(names()[1]))?,
-    ];
-    let staging = directory.join(".linklens-update");
-    fs::create_dir(&staging)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))?;
-    }
-    let prepared = PreparedInstall {
-        directory,
-        staging,
-        lock: Some(lock),
-        originals,
-        preserve: false,
-        #[cfg(windows)]
-        current_exe: actual,
-    };
-    write_journal(
-        &prepared.staging,
-        &Journal {
-            phase: Phase::Prepared,
-            originals,
-        },
-    )?;
-    for (name, bytes) in names().into_iter().zip([linklens, llens]) {
-        let mut file = fs::File::create(prepared.staging.join(format!("{name}.new")))?;
-        file.write_all(bytes)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(fs::Permissions::from_mode(0o755))?;
-        }
-        file.sync_all()?;
-    }
-    sync_directory(&prepared.staging)?;
-    Ok(prepared)
+    UpdateInstallation::begin(current_exe)?
+        .0
+        .prepare(linklens, llens)
 }
+
 impl PreparedInstall {
     pub fn commit(self) -> Result<InstallOutcome, InstallError> {
         #[cfg(not(windows))]

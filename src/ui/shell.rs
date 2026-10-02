@@ -57,6 +57,12 @@ fn render_title(f: &mut Frame, area: Rect, update: &crate::state_update::UpdateS
             Style::new().fg(THEME_WARNING),
         ));
     }
+    if let Some(notice) = &update.notice {
+        spans.push(Span::styled(
+            format!(" · {notice}"),
+            Style::new().fg(THEME_MUTED),
+        ));
+    }
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 

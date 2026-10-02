@@ -31,3 +31,28 @@ fn source_update_is_equivalent_and_does_not_enter_tui_even_if_checks_are_disable
     }
     assert_eq!(errors[0], errors[1]);
 }
+
+#[test]
+fn both_real_commands_implement_private_official_identity_protocol() {
+    let expected = network_tui::update::BuildIdentity::official();
+    for command in [env!("CARGO_BIN_EXE_linklens"), env!("CARGO_BIN_EXE_llens")] {
+        let output = Command::new(command)
+            .arg("--linklens-update-identity")
+            .output()
+            .unwrap();
+        match &expected {
+            Ok(build) => {
+                assert!(output.status.success());
+                let actual: network_tui::update::BuildIdentity =
+                    serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(&actual, build);
+                assert!(output.stderr.is_empty());
+            }
+            Err(error) => {
+                assert!(!output.status.success());
+                assert!(String::from_utf8_lossy(&output.stderr).contains(error));
+                assert!(output.stdout.is_empty());
+            }
+        }
+    }
+}

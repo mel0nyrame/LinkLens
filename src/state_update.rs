@@ -9,6 +9,7 @@ pub struct UpdateState {
     pub select_update: bool,
     pub downloading: bool,
     pub error: Option<String>,
+    pub notice: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
