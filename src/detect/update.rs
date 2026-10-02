@@ -127,10 +127,25 @@ pub fn verified_programs(
         Ok(())
     };
     if windows {
+        // ZIP 索引按名字去重，原始成员数必须独立核对。官方包无需 ZIP64。
+        let last = archive.len().checked_sub(22).ok_or("ZIP 结束记录缺失")?;
+        let trailer = (archive.len().saturating_sub(65557)..=last)
+            .rev()
+            .find_map(|offset| {
+                let header = &archive[offset..offset + 22];
+                let comment = u16::from_le_bytes([header[20], header[21]]) as usize;
+                (header[..4] == *b"PK\x05\x06" && offset + 22 + comment == archive.len())
+                    .then_some(header)
+            })
+            .ok_or("ZIP 结束记录无效")?;
+        let members = u16::from_le_bytes([trailer[10], trailer[11]]) as usize;
+        if members > 4 {
+            return Err("ZIP 原始文件数量超过上限".into());
+        }
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(archive))
             .map_err(|e| format!("ZIP 无效：{e}"))?;
-        if zip.len() > 4 {
-            return Err("归档文件数量超过上限".into());
+        if zip.len() != members {
+            return Err("ZIP 包含重复文件".into());
         }
         for index in 0..zip.len() {
             let mut file = zip.by_index(index).map_err(|e| e.to_string())?;
@@ -311,6 +326,28 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn duplicate_zip_members_cannot_be_hidden_by_zip_index() {
+        use std::io::{Cursor, Write};
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for name in ["linklens.exe", "llens.exe", "other.exe"] {
+            writer
+                .start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(b"program").unwrap();
+        }
+        let mut bytes = writer.finish().unwrap().into_inner();
+        for index in 0..bytes.len() - 9 {
+            if &bytes[index..index + 9] == b"other.exe" {
+                bytes[index..index + 9].copy_from_slice(b"llens.exe");
+            }
+        }
+        let name = "linklens-v0.2.0-x86_64-pc-windows-msvc.zip";
+        assert!(
+            verified_programs(&bytes, &sums(&bytes, name), name, "x86_64-pc-windows-msvc").is_err()
+        );
+    }
+
     #[test]
     fn target_and_checksum_manifest_are_bound_to_one_archive() {
         let name = "linklens-v0.2.0-aarch64-apple-darwin.tar.gz";
