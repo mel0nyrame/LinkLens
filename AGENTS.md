@@ -7,11 +7,11 @@ LinkLens 是 Rust 终端网络诊断工具。产品名写作 **LinkLens**，主�
 - 永远使用中文回答；用户可见文案以中文为主，保留必要的协议和产品名称。
 - 先检查 `git status` 和 `git worktree list`，确认当前分支及任务所属工作树，保留其他任务的修改和本地数据。
 - 优先沿现有入口做最小改动。影响结果的假设须明确说明，并定义可执行的完成条件。
-- 工程术语使用 [GLOSSARY.md](GLOSSARY.md)。涉及模块边界、依赖或持久化策略时，读取 `docs/adr/` 中对应决策；领域文档的消费约定见 [domain.md](docs/agents/domain.md)。
+- 工程术语使用 [GLOSSARY.md](GLOSSARY.md)。涉及模块边界、依赖或持久化策略时，读取 `docs/adr/` 中对应决策。
 
 ## 修改入口与边界
 
-- `net/` 负责后端接口和原生网络 IO，`detect/` 负责纯解析与判定，`probe*.rs` 负责异步编排，`state*.rs` 负责状态，`ui/` 负责输入与渲染。沿现有职责扩展，保持判定逻辑可独立测试。
+- `src/net/` 负责后端接口和原生网络 IO，`src/detect/` 负责纯解析与判定，`probe*.rs` 负责异步编排，`state*.rs` 负责状态，`src/app.rs` 分发输入，`src/ui/` 负责布局与渲染。沿现有职责扩展，保持判定逻辑可独立测试。修改重查、滚动、评分、历史或共享视觉规则，以及交接工作树、复现终端验收时，先读 [任务导航](docs/agents/navigation.md) 对应条目。
 - 调整 API 字段、错误分类、判定公式、请求时限或探测节奏前，读取 [net.coffee 接口报告](docs/research/net-coffee-api.md) 对应章节。报告记录接口事实与来源，README 描述 LinkLens 的实际行为。
 - 卡片、徽章、颜色和图标复用 `theme/` 的统一入口。页面正文保持可滚动，键盘与滚轮使用一致的边界；无页面行为的鼠标事件在布局和重绘前过滤。
 - 共享状态锁内只做短暂读取或修改；网络请求和其他等待在锁外执行。重查须明确任务取消与迟到结果隔离。
@@ -22,8 +22,22 @@ LinkLens 是 Rust 终端网络诊断工具。产品名写作 **LinkLens**，主�
 - 非平凡修改先定义能捕获具体问题的验证，再执行。默认单元测试覆盖纯函数、状态变换和布局几何；真实 HTTP/DNS/STUN 与终端渲染使用独立冒烟或 PTY 验证。
 - 修改 Rust 代码后运行 `cargo test`、`cargo clippy --all-targets -- -D warnings`、`cargo fmt --check`，交付前检查 diff。真实网络测试默认忽略，只在任务需要时显式执行。
 - 修改命令入口时，构建并验证 `linklens`、`llens` 的等价行为；修改界面时验证实际终端输入、滚动和退出恢复。
-- 新功能和验收要求写入本地 Markdown tracker；目录、状态和关闭约定见 [issue-tracker.md](docs/agents/issue-tracker.md)，需要分诊标签时读取 [triage-labels.md](docs/agents/triage-labels.md)。现有七页规格位于 [.scratch/linklens/spec.md](.scratch/linklens/spec.md)。
+- 新功能和验收要求写入 GitHub Issues，操作约定见下方 Agent skills。追溯七页初始需求时读取 [历史规格](.scratch/linklens/spec.md)；当前行为与修改入口见 README、源码及任务导航。
 - 交付说明报告实际修改、实际检查及验证边界。提交说明使用 LinkLens 的功能语义；push 和后续历史改写分别需要用户明确授权。
+
+## Agent skills
+
+### Issue tracker
+
+新需求、规格与实施票据使用 GitHub Issues；建票、领取、关闭或读取历史验收时，见 [tracker 约定](docs/agents/issue-tracker.md)。
+
+### Triage labels
+
+分诊时使用五个默认角色及 [标签映射](docs/agents/triage-labels.md)。
+
+### Domain docs
+
+单上下文：根目录 `GLOSSARY.md` 与 `docs/adr/`；读取领域文档时，见 [消费约定](docs/agents/domain.md)。
 
 ## 发布维护
 
