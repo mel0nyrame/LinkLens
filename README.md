@@ -137,3 +137,7 @@ cargo fmt --check
 ## 协议
 
 LinkLens 使用 [MIT License](LICENSE)。
+
+## Community
+
+感谢 [LINUX DO](https://linux.do) 社区提供开放友好的技术讨论平台。
