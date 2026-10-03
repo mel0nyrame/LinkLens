@@ -53,7 +53,7 @@ pub struct InstallOutcome {
 pub struct PreparedInstall {
     directory: PathBuf,
     staging: PathBuf,
-    lock: Option<fs::File>,
+    lock: Option<DirectoryLock>,
     originals: [bool; 2],
     preserve: bool,
     #[cfg(windows)]
@@ -78,7 +78,7 @@ fn names() -> [&'static str; 2] {
 pub struct UpdateInstallation {
     current_exe: PathBuf,
     directory: PathBuf,
-    lock: fs::File,
+    lock: DirectoryLock,
 }
 impl UpdateInstallation {
     pub fn begin(current_exe: &Path) -> Result<(Self, RecoveryOutcome), InstallError> {
@@ -309,7 +309,15 @@ fn validate_regular(path: &Path) -> io::Result<bool> {
     }
 }
 
-fn open_lock(path: &Path) -> Result<fs::File, InstallError> {
+#[derive(Debug)]
+struct DirectoryLock(fs::File);
+impl Drop for DirectoryLock {
+    fn drop(&mut self) {
+        // Unix 子进程可能短暂继承句柄；显式解锁不等待所有副本关闭。
+        let _ = self.0.unlock();
+    }
+}
+fn open_lock(path: &Path) -> Result<DirectoryLock, InstallError> {
     validate_regular(path)?;
     let file = fs::OpenOptions::new()
         .read(true)
@@ -321,9 +329,9 @@ fn open_lock(path: &Path) -> Result<fs::File, InstallError> {
         message: format!("另一个更新正在运行，或无法锁定安装目录：{error}"),
         recovery_dir: None,
     })?;
-    Ok(file)
+    Ok(DirectoryLock(file))
 }
-fn acquire_lock(directory: &Path) -> Result<fs::File, InstallError> {
+fn acquire_lock(directory: &Path) -> Result<DirectoryLock, InstallError> {
     let gate = open_lock(&directory.join(".linklens-update-handoff.lock"))?;
     let lock = open_lock(&directory.join(".linklens-update.lock"))?;
     drop(gate);
@@ -597,6 +605,29 @@ fn worker_install(directory: &Path) -> Result<(), InstallError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn transaction_end_releases_lock_while_a_duplicate_handle_remains_open() {
+        let directory =
+            std::env::temp_dir().join(format!("linklens-inherited-lock-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir(&directory).unwrap();
+        let current = directory.join(names()[0]);
+        fs::write(&current, b"old-main").unwrap();
+        let installation = UpdateInstallation::begin(&current).unwrap().0;
+        let duplicate = installation.lock.0.try_clone().unwrap();
+        assert!(UpdateInstallation::begin(&current).is_err());
+        drop(installation);
+        let pending = prepare(&current, b"new-main", b"new-short").unwrap();
+        drop(duplicate);
+        let duplicate = pending.lock.as_ref().unwrap().0.try_clone().unwrap();
+        assert!(UpdateInstallation::begin(&current).is_err());
+        drop(pending);
+        let installation = UpdateInstallation::begin(&current).unwrap().0;
+        drop(duplicate);
+        drop(installation);
+        fs::remove_dir_all(directory).unwrap();
+    }
     #[test]
     fn second_command_failure_restores_both_originals() {
         let directory =
