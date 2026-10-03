@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: isolated transparent subject for the LinkLens light README local history section.
+Primary request: a single elegant pale mint file folder holding three ivory record cards, with small embossed rounded rectangular row marks suggesting locally saved IP detection records. One small restrained circular clock dial inset into the folder front, without numerals. The folder means saved detection history, not cloud storage.
+Style/medium: polished editorial 3D render, matte ceramic-like ivory and mint surfaces with subtle bevels, same calm physical-object style as LinkLens terminal-lens cover.
+Composition/framing: one centered compact cluster, nearly frontal mild three-quarter view, all cards and folder fully visible, generous transparent padding. No surrounding scenery.
+Lighting/mood: bright diffuse daylight, subtle intrinsic shadows only.
+Color palette: ivory #f4faf8, pale mint #e1efea, muted sea green #50716b, teal #216659. Light theme only.
+Constraints: genuine transparent background and corners; no text, letters, numbers, logos, watermark, padlock, shield, cloud, people or dark surfaces. Exact filesystem path and retention facts will be added separately by SVG.
