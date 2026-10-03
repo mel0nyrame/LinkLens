@@ -52,7 +52,7 @@ irm https://raw.githubusercontent.com/mel0nyrame/LinkLens/main/install.ps1 | iex
 linklens
 ```
 
-Windows 安装到 `%LOCALAPPDATA%\LinkLens\bin`，并添加到用户 `PATH`。macOS、Linux 和 Windows Git Bash 也可以使用上面的 curl 脚本。安装选项：`LINKLENS_VERSION=v0.1.1` 可指定版本，`LINKLENS_INSTALL_DIR` 可指定目录；重新运行脚本即可更新程序。
+Windows 安装到 `%LOCALAPPDATA%\LinkLens\bin`，并添加到用户 `PATH`。macOS、Linux 和 Windows Git Bash 也可以使用上面的 curl 脚本。安装选项：`LINKLENS_VERSION=v0.1.2` 可指定版本，`LINKLENS_INSTALL_DIR` 可指定目录；重新运行脚本即可更新程序。
 
 也可以从 [Releases](https://github.com/mel0nyrame/LinkLens/releases/latest) 下载并解压匹配的包，直接运行 `linklens` 或 `llens`（Windows 使用 `.exe`），无需工具链。
 
@@ -82,7 +82,7 @@ linklens
 
 ## 更新程序
 
-自更新入口属于开发分支中的功能；现有不带自更新入口的 Release 须先重新运行原安装脚本，或下载新包升级一次。自更新程序包含官方发布版本和构建目标，普通源码构建仅提示按原方式升级，不替换本机程序。
+从 v0.1.2 起，官方 Release 程序支持自更新。v0.1.0 / v0.1.1 用户须先重新运行原安装脚本，或下载新包升级一次。自更新程序包含官方发布版本和构建目标，普通源码构建仅提示按原方式升级，不替换本机程序。
 
 在带自更新入口的官方程序中，两个命令等价：
 
@@ -98,7 +98,7 @@ llens update
 
 设置 `LINKLENS_NO_UPDATE_CHECK=1` 关闭 TUI 自动检查，仅影响自动检查，手动 `update` 仍然可用。自动检查失败静默结束，不打断诊断。检查和下载沿用 HTTP 客户端的系统代理环境变量约定，不新增代理设置。
 
-发布流程为五个预编译目标构建更新程序；自更新的实际平台验收范围以 [功能规格与验收记录](https://github.com/mel0nyrame/LinkLens/issues/2) 为准。macOS ARM64 / Intel 与 Linux musl ARM64 / x64 已验证命令、临时目录安装与 PTY 交互；Linux x64 通过仿真运行。Windows x64 已在原生 CI 验证运行中程序替换、辅助进程交接和结果反馈；Windows 终端交互不属于上述 PTY 验收范围。自更新使用 HTTPS 和同一 Release 的 SHA-256 校验清单，未增加独立签名认证。
+发布流程为五个预编译目标构建更新程序；自更新的实际平台验收范围以 [功能规格与验收记录](https://github.com/mel0nyrame/LinkLens/issues/2) 和 [CI](https://github.com/mel0nyrame/LinkLens/actions/workflows/ci.yml) 为准。五个目标的官方命令身份，以及 macOS ARM64 / Intel 与 Linux musl ARM64 / x64 的 PTY 交互均由原生 CI runner 验证。Windows x64 已验证运行中程序替换、辅助进程交接和结果反馈；Windows 终端交互不属于上述 PTY 验收范围。自更新使用 HTTPS 和同一 Release 的 SHA-256 校验清单，未增加独立签名认证。
 
 ## 操作指南
 
@@ -142,15 +142,15 @@ LinkLens 的部分 IP 资料与评分使用 net.coffee 后端接口，接口事�
 
 ## 参与开发
 
-`main` 是展示与发布入口，源码及开发历史位于 [`dev`](https://github.com/mel0nyrame/LinkLens/tree/dev)。在 `dev` 仓库根目录运行检查：
+`main` 是展示与发布入口，源码及开发历史位于 [`dev`](https://github.com/mel0nyrame/LinkLens/tree/dev)。本地使用已有工具做文档、语法、格式和 diff 等静态检查：
 
 ```sh
-cargo test
-cargo clippy --all-targets -- -D warnings
 cargo fmt --check
+python3 .github/scripts/check_docs.py
+git diff --check
 ```
 
-真实网络冒烟测试默认跳过，可用 `cargo test --lib live_ -- --ignored` 单独运行。界面与输入行为还需在实际终端验证。自更新的可复现 PTY 验收使用 `python3 .github/scripts/test_update_pty.py`，在临时安装目录运行测试专用场景，不请求真实更新服务，也不读写用户历史。
+推送后由 CI 执行测试、Clippy、构建与平台验收，本地无需为验证补装工具链、目标标准库或容器镜像。真实网络冒烟测试默认跳过，按任务需要在 CI 使用 `cargo test --lib live_ -- --ignored` 显式执行。自更新的 PTY 验收使用 `python3 .github/scripts/test_update_pty.py`，在 runner 的临时安装目录运行测试专用场景，不请求真实更新服务，也不读写用户历史。
 
 提交代码时，CI 运行测试、格式和 Clippy 检查；只改 Markdown、文档图片或协议文件时，运行文档检查。发布标签使用 `v主版本.次版本.修订版本`，Release 文案由维护者编写后随版本保存。
 
