@@ -51,6 +51,8 @@ jobs:
           rustup default stable
       - run: cargo fmt --check
       - run: cargo test --locked
+      - name: Verify leak probes against real network
+        run: cargo test --locked --lib probe_leak -- --ignored
       - run: cargo clippy --locked --all-targets -- -D warnings
   update-acceptance:
     needs: changes

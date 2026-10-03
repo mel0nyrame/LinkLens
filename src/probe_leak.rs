@@ -1,6 +1,6 @@
 //! 泄漏检测编排：后台 tokio 任务把探测结果写进共享状态。
 //!
-//! - `spawn_dns_leak`：随机 token 子域走系统 resolver 发 UDP 53 查询（快速 5 轮 /
+//! - `spawn_dns_leak`：随机 token 对探测子域发真实 HTTPS 请求触发解析（快速 5 轮 /
 //!   深度 8 轮，间隔 600ms），静置 2s 后轮询回读解析器列表（最多 3 次），
 //!   逐项 geoip 补旗后给出三态判定（报告 §3.6 全流程）；
 //! - `spawn_webrtc_probe`：解析 3 个 STUN 服务器的 A+AAAA（IPv4/IPv6 都要采集），
@@ -8,6 +8,8 @@
 //!
 //! 并发与节奏约束（红线）：公网收发超时一律 8 秒（`net::http` 客户端级
 //! 与 `net::stun` 套接字超时）；页面按键 f/d 触发 DNS 探测，进入 WebRTC 页自动探测一次。
+//! DNS 触发不采用裸 DNS 查询：透明代理 fake-ip 劫持下查询被本地应答而从不递归，
+//! 会把泄漏假阴性为「已加密」；真实建连才与上游浏览器的触发等价。
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -80,21 +82,20 @@ async fn run_dns_leak(shared: SharedState, mode: DnsMode) {
     }
     shared.notify();
 
-    // 2. 真随机 token + 按「系统 resolver 配置」发询（红线：不写死公共 DNS）
+    // 2. 真随机 token；触发对探测 URL 发真实 HTTPS 请求（红线：不退回裸 DNS 查询）
     let token = dnsleak::generate_token();
     {
         let mut state = shared.lock();
         state.dns_leak.mode = Some(mode);
         state.dns_leak.rounds_total = mode.rounds();
     }
-    let Ok(resolver) = dnsleak::system_resolver() else {
-        fail_dns(&shared, "无法读取系统 resolver 配置，探测终止").await;
-        return;
-    };
 
-    // 3. 逐轮触发权威解析：`<token>-<n>.d.ip.net.coffee`，轮间隔 600ms
+    // 3. 逐轮触发权威解析：pixel 请求建连迫使解析链路真实递归，轮间隔 600ms
+    let mut trigger_successes = 0usize;
     for round in 1..=mode.rounds() {
-        dnsleak::flush_round(&resolver, &token, round).await;
+        if dnsleak::trigger_round(&client, &token, round).await {
+            trigger_successes += 1;
+        }
         {
             let mut state = shared.lock();
             state.dns_leak.rounds_done = round;
@@ -105,7 +106,7 @@ async fn run_dns_leak(shared: SharedState, mode: DnsMode) {
         }
     }
 
-    // 4. 静置 2s 后轮询回读（最多 3 次；空列表也是合法响应 → 已加密未暴露）
+    // 4. 静置 2s 后轮询回读（最多 3 次），按触发成败区分「探测失败」与「已加密」
     tokio::time::sleep(dnsleak::RESULT_SETTLE).await;
     let mut servers: Vec<String> = Vec::new();
     let mut got_response = false;
@@ -119,9 +120,20 @@ async fn run_dns_leak(shared: SharedState, mode: DnsMode) {
         }
         tokio::time::sleep(dnsleak::RESULT_POLL_INTERVAL).await;
     }
-    if !got_response {
-        fail_dns(&shared, "回读解析器列表失败，请检查网络后重试").await;
-        return;
+    match dnsleak::classify_readback(trigger_successes, got_response, &servers) {
+        dnsleak::ReadbackOutcome::ReadbackFailed => {
+            fail_dns(&shared, "回读解析器列表失败，请检查网络后重试").await;
+            return;
+        }
+        dnsleak::ReadbackOutcome::TriggersFailed => {
+            fail_dns(
+                &shared,
+                "探测请求全部失败，未能触发 DNS 解析，请检查网络后重试",
+            )
+            .await;
+            return;
+        }
+        dnsleak::ReadbackOutcome::Ready => {}
     }
 
     // 5. 解析器列表逐项 geoip 补旗与归属地（批量优先，失败退单查）
@@ -362,7 +374,7 @@ mod tests {
     use crate::state_leak::{DnsMode, DnsPhase, WebrtcPhase};
 
     /// 集成冒烟（需真实网络，默认跳过）：`cargo test --lib probe_leak -- --ignored`
-    /// 验证 DNS 泄漏全流程（系统 resolver 触发 + 回读 + geoip + 判定）。
+    /// 验证 DNS 泄漏全流程（真实 HTTPS 触发 + 回读 + geoip + 判定）。
     /// 候选多少与成败取决于网络环境（代理/无网时允许失败态），这里只断言状态机完整。
     #[tokio::test]
     #[ignore = "需要真实公网，手动执行"]

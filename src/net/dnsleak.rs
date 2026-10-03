@@ -1,11 +1,13 @@
-//! DNS 泄漏探测：随机 token 子域走系统 resolver 发 UDP 53 A 查询，回读解析器出口列表。
+//! DNS 泄漏探测：随机 token 对探测子域发真实 HTTPS 请求（上游浏览器 pixel 等价），回读解析器出口列表。
 //!
 //! 权威依据：net.coffee 接口报告 §2.7（`/api/dns/result/{token}`）与 §3.6（流程与判定）。
-//! token 与探测域名：`<token>-<n>.d.ip.net.coffee`（`*.d.ip.net.coffee` 泛解析，
-//! 权威 NS 会把「来查的 resolver IP」挂到 token 上）；随后轮询回读接口拿解析器列表。
+//! token 与探测地址：`https://<token>-<n>.d.ip.net.coffee/pixel.gif`（`*.d.ip.net.coffee`
+//! 泛解析，权威 NS 会把「来查的 resolver IP」挂到 token 上）；随后轮询回读接口拿解析器列表。
 //!
 //! 质量红线：token 必须是真随机（OS CSPRNG），不得固定值或弱随机；
-//! DNS 查询必须按系统 resolver 配置发询，否则测到的不是本机真实 DNS 链路。
+//! 触发必须是真实 HTTP 建连，不得退回裸 DNS 查询——透明代理 fake-ip 劫持会把
+//! UDP/TCP 53 查询本地应答（198.18/15）而从不递归，权威 NS 收不到记录，回读恒空，
+//! 判定将假阴性为「已加密」；真实建连才迫使解析链路（直连或代理上游）完成递归。
 
 use std::time::Duration;
 
@@ -66,12 +68,11 @@ pub const RESULT_POLL_ATTEMPTS: usize = 3;
 /// 相邻两次回读轮询的间隔。
 pub const RESULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
-/// 探测域名：`<token>-<n>.d.ip.net.coffee`（`n` 从 1 起，泛解析）。
+/// 探测 URL：`https://<token>-<n>.d.ip.net.coffee/pixel.gif`（`n` 从 1 起，泛解析）。
 ///
-/// 尾部带点确保按 FQDN 查询、不拼系统搜索域；每次查询都会驱动系统 resolver
-/// 去问权威 NS，这正是「挂上 resolver IP」的触发动作。
-pub fn probe_domain(token: &str, round: u32) -> String {
-    format!("{token}-{round}.d.ip.net.coffee.")
+/// 与上游浏览器同一触发地址；host 含真随机 token，全 URL 唯一，无缓存命中风险。
+pub fn probe_url(token: &str, round: u32) -> String {
+    format!("https://{token}-{round}.d.ip.net.coffee/pixel.gif")
 }
 
 /// `/api/dns/result/{token}` 响应体（报告 §2.7：未知 token 也返回 200 + 空列表）。
@@ -102,12 +103,17 @@ pub fn system_resolver() -> Result<TokioResolver, String> {
         .map_err(|err| format!("构建系统 resolver 失败：{err}"))
 }
 
-/// 发起一轮探测：对 `<token>-<round>` 子域发 UDP 53 A/AAAA 查询（走系统 resolver）。
+/// 发起一轮触发：对探测 URL 发真实 HTTPS GET（上游浏览器 pixel 请求等价）。
 ///
-/// 只关心「resolver 去问了权威 NS」这个触发动作，解析成败不影响结果；
-/// 每轮独立吞掉错误，避免单轮失败中断整次探测。
-pub async fn flush_round(resolver: &TokioResolver, token: &str, round: u32) {
-    let _ = resolver.lookup_ip(probe_domain(token, round)).await;
+/// 只关心「建连迫使解析链路真实递归」这个触发动作，任意状态码都算成功，
+/// 不读响应体；每轮独立吞掉错误，避免单轮失败中断整次探测。
+pub async fn trigger_round(client: &reqwest::Client, token: &str, round: u32) -> bool {
+    client
+        .get(probe_url(token, round))
+        .timeout(crate::net::http::PUBLIC_TIMEOUT)
+        .send()
+        .await
+        .is_ok()
 }
 
 /// 轮询回读接口拿解析器列表；网络失败或响应不合法为 `None`。
@@ -129,13 +135,43 @@ pub async fn fetch_dns_result(client: &reqwest::Client, token: &str) -> Option<V
     Some(parse_dns_result(&text)?.dns_servers)
 }
 
+/// 回读结果分类（纯函数的产出）：决定 DNS 探测流程的走向。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ReadbackOutcome {
+    /// 触发请求全部失败且无解析器记录：链路未递归，按探测失败处理，不得解释为已加密。
+    TriggersFailed,
+    /// 回读接口失败（网络失败或响应不合法）。
+    ReadbackFailed,
+    /// 可进入解析器归属与三态判定（解析器列表可能为空，为空时判已加密/未暴露）。
+    Ready,
+}
+
+/// 回读结果分类（纯函数）：把「触发成败 + 回读响应」映射为流程走向。
+///
+/// 上游「空列表 = 已加密」的前提是浏览器必然真实建连；本工具的触发是显式请求，
+/// 触发全失败时空列表只说明链路不通，必须与已加密区分（接口报告 §3.6）。
+pub fn classify_readback(
+    trigger_successes: usize,
+    got_response: bool,
+    servers: &[String],
+) -> ReadbackOutcome {
+    if !got_response {
+        return ReadbackOutcome::ReadbackFailed;
+    }
+    if servers.is_empty() && trigger_successes == 0 {
+        return ReadbackOutcome::TriggersFailed;
+    }
+    ReadbackOutcome::Ready
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
     use super::{
-        DEEP_ROUNDS, FAST_ROUNDS, RESULT_POLL_ATTEMPTS, RESULT_SETTLE, ROUND_INTERVAL, TOKEN_LEN,
-        generate_token, parse_dns_result, probe_domain, token_from_bytes,
+        DEEP_ROUNDS, FAST_ROUNDS, RESULT_POLL_ATTEMPTS, RESULT_SETTLE, ROUND_INTERVAL,
+        ReadbackOutcome, TOKEN_LEN, classify_readback, generate_token, parse_dns_result, probe_url,
+        token_from_bytes,
     };
 
     #[test]
@@ -187,13 +223,53 @@ mod tests {
     }
 
     #[test]
-    fn probe_domain_matches_official_pattern() {
+    fn probe_url_matches_official_pattern() {
         assert_eq!(
-            probe_domain("sampledns0123456789ab", 1),
-            "sampledns0123456789ab-1.d.ip.net.coffee."
+            probe_url("sampledns0123456789ab", 1),
+            "https://sampledns0123456789ab-1.d.ip.net.coffee/pixel.gif"
         );
-        assert_eq!(probe_domain("abc", 5), "abc-5.d.ip.net.coffee.");
-        assert_eq!(probe_domain("abc", 8), "abc-8.d.ip.net.coffee.");
+        assert_eq!(
+            probe_url("abc", 5),
+            "https://abc-5.d.ip.net.coffee/pixel.gif"
+        );
+        assert_eq!(
+            probe_url("abc", 8),
+            "https://abc-8.d.ip.net.coffee/pixel.gif"
+        );
+    }
+
+    #[test]
+    fn classify_readback_distinguishes_failed_triggers_from_encrypted() {
+        let servers =
+            |ips: &[&str]| -> Vec<String> { ips.iter().map(|s| (*s).to_string()).collect() };
+
+        // 回读失败优先：无论触发成败，回读不通都是回读失败
+        assert_eq!(
+            classify_readback(0, false, &[]),
+            ReadbackOutcome::ReadbackFailed
+        );
+        assert_eq!(
+            classify_readback(5, false, &servers(&["192.0.2.1"])),
+            ReadbackOutcome::ReadbackFailed
+        );
+
+        // 触发全失败 + 空列表：链路未递归，是探测失败而非「已加密」（issue #8）
+        assert_eq!(
+            classify_readback(0, true, &[]),
+            ReadbackOutcome::TriggersFailed
+        );
+
+        // 有触发成功即进入判定：空列表按上游规则解释为已加密/未暴露
+        assert_eq!(classify_readback(2, true, &[]), ReadbackOutcome::Ready);
+        assert_eq!(
+            classify_readback(0, true, &servers(&["192.0.2.1"])),
+            ReadbackOutcome::Ready,
+            "客户端侧失败但上游有记录，仍按有效回读处理"
+        );
+        assert_eq!(
+            classify_readback(3, true, &servers(&["192.0.2.1", "192.0.2.2"])),
+            ReadbackOutcome::Ready
+        );
     }
 
     #[test]
