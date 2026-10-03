@@ -132,8 +132,8 @@
  "192.0.2.11", "192.0.2.12", "192.0.2.13", "192.0.2.14", "192.0.2.15"]}
 ```
 - 未知 token 也返回 200 + 空 `dns_servers`（可放心轮询）。
-- **TUI 实现关键**：token 无需注册/签名，**但必须先用真实 DNS 查询 `<token>-<n>.d.ip.net.coffee`（n=1..N）触发解析**，服务器端权威 DNS 才会把"来查的 resolver IP"挂到该 token 上。原生 TUI 直接对随机子域名做 UDP 53 的 A 查询即可（**比浏览器更简单，不需要 pixel.gif**）；随后轮询本接口。泄漏判定见 §3.6。
-- **curl 复放：✅**（回读部分；触发部分 TUI 用 DNS 客户端实现）。
+- **TUI 实现关键**：token 无需注册/签名，**但必须先让解析链路真实递归查询 `<token>-<n>.d.ip.net.coffee`（n=1..N）**，服务器端权威 DNS 才会把"来查的 resolver IP"挂到该 token 上。裸 DNS 查询（UDP/TCP 53）在透明代理 fake-ip 劫持下被本地应答、从不递归，会产生假阴性；TUI 应对 `https://<token>-<n>.d.ip.net.coffee/pixel.gif` 发真实 HTTPS 请求触发（浏览器等价，见 §3.6）。随后轮询本接口。泄漏判定见 §3.6。
+- **curl 复放：✅**（回读部分；触发部分 TUI 用真实 HTTPS 请求实现，见 §3.6）。
 
 ### 2.8 全球拨测三件套
 
@@ -328,9 +328,11 @@
 
 #### LinkLens 采用值与验证入口
 
-LinkLens 通过系统 resolver 对随机子域发起原生 DNS 查询；快速 5 轮、深度 8 轮，等待 2 秒后回读，最多 3 次轮询、轮询间隔 2 秒。结果回读显式采用 5 秒请求时限，覆盖通用客户端 8 秒默认值；resolver 查询仍采用通用 8 秒边界。此处针对独立 DNS 页，上游 AI 页内嵌 DNS 的 3 秒回读属于另一流程。
+LinkLens 对 `https://<token>-<n>.d.ip.net.coffee/pixel.gif` 发起真实 HTTPS 请求触发解析（上游浏览器等价），快速 5 轮、深度 8 轮，等待 2 秒后回读，最多 3 次轮询、轮询间隔 2 秒。结果回读显式采用 5 秒请求时限，触发请求与 resolver 查询采用通用 8 秒边界。此处针对独立 DNS 页，上游 AI 页内嵌 DNS 的 3 秒回读属于另一流程。
 
-token、回读解析、轮数与等待常量及其纯函数测试见 [dnsleak.rs](../../src/net/dnsleak.rs)；编排与默认忽略的真实网络冒烟见 [probe_leak.rs](../../src/probe_leak.rs)，三态判定及测试见 [leak.rs](../../src/detect/leak.rs)。结果为空与 HTTP/解析失败分别处理，不能把失败解释为已加密；真实网络结果受运行环境影响。
+触发不采用裸 DNS 查询：透明代理 fake-ip 劫持环境会把 UDP/TCP 53 查询本地应答（应答落在 198.18/15）而从不递归，权威 NS 收不到记录，裸查询将假阴性为「已加密」；真实建连在直连与代理环境都迫使解析链路完成递归（2026-10-03 实测，issue #8）。回读为空时区分「触发请求全部失败（探测失败）」与「有请求完成但无解析器记录（已加密/未暴露）」。
+
+token、触发与回读地址、回读解析、轮数与等待常量及回读分类的纯函数测试见 [dnsleak.rs](../../src/net/dnsleak.rs)；编排与默认忽略的真实网络冒烟见 [probe_leak.rs](../../src/probe_leak.rs)，三态判定及测试见 [leak.rs](../../src/detect/leak.rs)。结果为空与 HTTP/解析失败分别处理，不能把失败解释为已加密；真实网络结果受运行环境影响。
 
 ### 3.7 WebRTC `/webrtc/`（独立页，❌ 纯浏览器能力）
 - STUN 列表（**共 3 个**）：`stun:stun.l.google.com:19302`、`stun:stun.cloudflare.com:3478`、`stun:stun1.l.google.com:19302`（无 TURN）。
