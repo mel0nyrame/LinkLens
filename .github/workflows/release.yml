@@ -103,3 +103,55 @@ jobs:
           gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/*.zip dist/SHA256SUMS --clobber
           gh release edit "$RELEASE_TAG" --draft=false --latest \
             --title "LinkLens $RELEASE_TAG" --notes-file ".github/releases/$RELEASE_TAG.md"
+  verify-published:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download published assets and verify all five checksums
+        run: |
+          gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP/linklens-release"
+          cd "$RUNNER_TEMP/linklens-release"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          tag = os.environ["RELEASE_TAG"]
+          targets = ("x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl",
+                     "x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-pc-windows-msvc")
+          expected = {f"linklens-{tag}-{target}.{'zip' if 'windows' in target else 'tar.gz'}"
+                      for target in targets}
+          lines = [line.split() for line in Path("SHA256SUMS").read_text().splitlines()]
+          assert len(lines) == 5 and all(len(line) == 2 for line in lines), lines
+          assert {line[1] for line in lines} == expected, lines
+          assert {path.name for path in Path.cwd().iterdir()} == expected | {"SHA256SUMS"}
+          PY
+          sha256sum --check SHA256SUMS
+      - name: Install published Linux package and verify both command identities
+        env:
+          LINKLENS_VERSION: ${{ github.ref_name }}
+        run: |
+          export LINKLENS_INSTALL_DIR="$RUNNER_TEMP/linklens-installed"
+          sh install.sh
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          expected = {"version": os.environ["RELEASE_TAG"][1:],
+                      "target": "x86_64-unknown-linux-musl"}
+          for name in ("linklens", "llens"):
+              command = Path(os.environ["LINKLENS_INSTALL_DIR"]) / name
+              output = subprocess.run([str(command), "--linklens-update-identity"],
+                                      check=True, capture_output=True, text=True, timeout=10)
+              assert json.loads(output.stdout) == expected, output.stdout
+              assert not output.stderr, output.stderr
+          PY

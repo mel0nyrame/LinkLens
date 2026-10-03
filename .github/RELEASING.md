@@ -27,7 +27,7 @@
 
 Release 校验标签与 Cargo 版本一致，要求对应文案文件。[build_release.py](scripts/build_release.py) 为五个平台执行测试与构建，并将 `LINKLENS_RELEASE_VERSION`（`vX.Y.Z` 标签）与 `LINKLENS_RELEASE_TARGET`（构建目标）传入 Cargo，供两个命令内嵌官方来源身份。普通源码构建不设置这两个变量。该身份用于来源与附件选择，不是签名认证；版本、目标或文案校验失败时不开始构建。打包 `linklens`、`llens`、README 和 MIT 协议。Linux 使用 musl，macOS 使用各架构的原生 runner，Windows 使用 x64 MSVC 并静态链接 C 运行库。SHA-256 汇总在 `SHA256SUMS`。
 
-全部构建通过后才发布：先创建 draft，再上传附件，最后用文案文件公开 Release。流程不使用自动生成的发布说明；失败时修复 `dev` 并发布新版本，或对未公开的失败运行执行重试，保持已公开标签不可变。
+全部构建通过后才发布：先创建 draft，再上传附件，最后用文案文件公开 Release。公开后的独立 `verify-published` 作业实际下载五个平台附件，检查附件列表与 SHA-256，并在 Linux runner 用安装脚本安装已发布包、验证两个命令的版本和官方身份。该作业失败时只重试验收，不重新上传公开附件。流程不使用自动生成的发布说明；构建失败时修复 `dev` 并发布新版本，或对未公开的失败运行执行重试，保持已公开标签不可变。
 
 安装入口是根目录 `install.sh`（macOS / Linux / Windows Git Bash）和 `install.ps1`（原生 Windows PowerShell）。包名、目标名称及校验文件是脚本与 workflow 的共同协议，修改时一起验证。GitHub 托管二进制未进行 Apple Developer 或 Windows 代码签名。
 
