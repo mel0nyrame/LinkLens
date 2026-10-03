@@ -2,5 +2,5 @@
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    network_tui::app::run().await
+    network_tui::app::dispatch().await
 }

@@ -63,10 +63,9 @@ jobs:
       - name: Test and build both commands
         shell: bash
         env:
+          RELEASE_TAG: ${{ github.ref_name }}
           BUILD_TARGET: ${{ matrix.target }}
-        run: |
-          cargo test --locked --target "$BUILD_TARGET"
-          cargo build --release --locked --bins --target "$BUILD_TARGET"
+        run: python .github/scripts/build_release.py
       - name: Package
         env:
           RELEASE_TAG: ${{ github.ref_name }}

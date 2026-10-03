@@ -11,6 +11,10 @@ repository = "https://github.com/mel0nyrame/LinkLens"
 name = "network_tui"
 
 [dependencies]
+flate2 = "1"
+sha2 = "0.10"
+tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 crossterm = { version = "0.29.0", features = ["event-stream"] }
 futures-util = "0.3.34"
 getrandom = "0.3"
@@ -20,7 +24,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "process", "io-util"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 url = "2"
 webpki-roots = "0.26"

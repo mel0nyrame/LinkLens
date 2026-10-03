@@ -20,3 +20,5 @@ pub mod trace;
 pub mod status;
 
 pub mod ip_score;
+
+pub mod update;
